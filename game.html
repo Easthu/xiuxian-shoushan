@@ -99,6 +99,10 @@
   <div id="wrap">
     <canvas id="cv" width="960" height="600"></canvas>
     <div id="tpanel"></div>
+    <div id="bosshud" style="display:none;position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:13;width:420px;text-align:center;pointer-events:none">
+      <div style="font-size:14px;letter-spacing:6px;color:#9e2b25;text-shadow:0 0 4px rgba(232,224,206,.9);margin-bottom:2px">千 年 妖 王</div>
+      <div style="width:100%;height:7px;background:rgba(43,38,32,.4);border:1px solid rgba(43,38,32,.55)"><div id="bossfill" style="height:100%;width:100%;background:linear-gradient(90deg,#7e1d16,#c4362a)"></div></div>
+    </div>
     <div id="wavebar" style="display:none;position:absolute;left:50%;top:20px;transform:translateX(-50%);width:260px;height:3px;background:rgba(43,38,32,.15);z-index:11"><div style="height:100%;width:0;background:rgba(158,43,37,.8)"></div></div>
     <div id="hurtVig" style="position:absolute;inset:0;pointer-events:none;z-index:14;opacity:0;background:radial-gradient(ellipse at center, rgba(158,43,37,0) 46%, rgba(158,43,37,.5) 100%);transition:opacity .18s"></div>
     <div id="countdown" style="display:none;position:absolute;left:50%;top:32px;transform:translateX(-50%);font-size:13px;color:#2b2620;z-index:11;letter-spacing:1px;white-space:nowrap"></div>
@@ -1990,6 +1994,7 @@ const R3D = (() => {
 
   // ---------- 3D 山门牌坊（两柱+匾额+灯笼+基座） ----------
   let gateLamps = [];
+  let gateHurt = 0, gateGrp = null;
   (function buildGate() {
     const [gx, gz] = C.GATE;
     const grp = new THREE.Group();
@@ -2026,6 +2031,7 @@ const R3D = (() => {
     grp.rotation.y = -Math.PI / 2; // 面向山道来向
     scene.add(grp);
     gateLamps = lampMats;
+    gateGrp = grp;
   })();
 
   // ---------- 星空（高空淡金星点，随风微闪） ----------
@@ -2044,6 +2050,33 @@ const R3D = (() => {
     pts2.userData.ph = ph;
     scene.add(pts2);
     starField = pts2;
+  })();
+
+  // ---------- 3D 雁阵（V 字编队绕场） ----------
+  const geese3d = [];
+  (function buildGeese3d() {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3a332c, roughness: .9 });
+    for (let f = 0; f < 2; f++) {
+      const flock = new THREE.Group();
+      const birds = [];
+      for (let i = 0; i < 7; i++) {
+        const bird = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.ConeGeometry(1.1, 4.4, 8), mat);
+        body.rotation.x = Math.PI / 2;
+        bird.add(body);
+        const wl = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.1),
+          new THREE.MeshStandardMaterial({ color: 0x3a332c, side: THREE.DoubleSide, roughness: 1 }));
+        wl.position.x = -1.6; wl.rotation.z = .18;
+        const wr = wl.clone(); wr.position.x = 1.6; wr.rotation.z = -.18;
+        bird.add(wl); bird.add(wr);
+        bird.userData = { wl, wr, ph: i * .8 };
+        flock.add(bird);
+        birds.push({ bird, off: [(i - 3) * 7, 0, Math.abs(i - 3) * 5] });
+      }
+      flock.userData = { birds, ang: f * Math.PI, r: 620 + f * 130, h: 200 + f * 60, sp: .05 + f * .02 };
+      scene.add(flock);
+      geese3d.push(flock);
+    }
   })();
 
   // ---------- 出怪传送门（妖兽从漩涡钻出） ----------
@@ -2090,6 +2123,7 @@ const R3D = (() => {
       if (fade.t >= 2) clearInterval(iv);
     }, 50);
   }
+
 
 
   // ---------- 出怪传送门（妖兽从漩涡钻出） ----------
@@ -2272,7 +2306,27 @@ const R3D = (() => {
     fSpr.scale.set(22, 22, 1);
     fSpr.position.set(0, 34, 0);
     grp.add(fSpr);
-    grp.userData = { ring, ring2, core, orbiters: [], realmBalls: [], ele: hex, glyph: fSpr, glyphPh: Math.random() * 10 };
+    // 塔基符文法阵（贴地旋转，属性色）
+    const rc = document.createElement("canvas"); rc.width = rc.height = 128;
+    const r2 = rc.getContext("2d");
+    r2.strokeStyle = "#fff"; r2.lineWidth = 2;
+    r2.beginPath(); r2.arc(64, 64, 44, 0, Math.PI * 2); r2.stroke();
+    r2.beginPath(); r2.arc(64, 64, 30, 0, Math.PI * 2); r2.stroke();
+    for (let i = 0; i < 12; i++) {
+      const a2 = i / 12 * Math.PI * 2;
+      r2.beginPath(); r2.moveTo(64 + Math.cos(a2) * 30, 64 + Math.sin(a2) * 30);
+      r2.lineTo(64 + Math.cos(a2) * 44, 64 + Math.sin(a2) * 44); r2.stroke();
+      r2.fillStyle = "#fff";
+      r2.fillRect(64 + Math.cos(a2) * 56 - 2, 64 + Math.sin(a2) * 56 - 2, 4, 4);
+    }
+    r2.save(); r2.translate(64, 64); r2.rotate(Math.PI / 6);
+    r2.strokeRect(-14, -14, 28, 28); r2.restore();
+    const circle = new THREE.Mesh(new THREE.PlaneGeometry(R * 3.4, R * 3.4),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(rc), color: hex, transparent: true, opacity: .55, blending: THREE.AdditiveBlending, depthWrite: false }));
+    circle.rotation.x = -Math.PI / 2;
+    circle.position.y = .3;
+    grp.add(circle);
+    grp.userData = { ring, ring2, core, orbiters: [], realmBalls: [], ele: hex, glyph: fSpr, glyphPh: Math.random() * 10, circle };
     return grp;
   }
   // 三级环绕飞剑（一次性挂载）
@@ -2510,6 +2564,7 @@ const R3D = (() => {
         o.mesh.rotation.y = -a + Math.PI / 2;
         o.mesh.rotation.z = Math.sin(time * 3 + o.phase) * .2;
       }
+      if (grp.userData.circle) grp.userData.circle.rotation.z = t.spin * .5;
       if (grp.userData.glyph) {
         grp.userData.glyph.position.y = 34 + Math.sin(time * 1.6 + grp.userData.glyphPh) * 3;
         grp.userData.glyph.material.opacity = .72 + Math.sin(time * 2.2 + grp.userData.glyphPh) * .2;
@@ -2548,6 +2603,20 @@ const R3D = (() => {
     }
     for (const [id, m] of projMeshes) {
       if (!seenP.has(id)) { scene.remove(m); projMeshes.delete(id); }
+    }
+    // 雁阵绕场（V 字+扇翅）
+    for (const flock of geese3d) {
+      flock.userData.ang += flock.userData.sp * dt;
+      const cx = 480 + Math.cos(flock.userData.ang) * flock.userData.r;
+      const cz = 300 + Math.sin(flock.userData.ang) * flock.userData.r * .55;
+      flock.position.set(cx, flock.userData.h + Math.sin(time * 1.1) * 8, cz);
+      flock.rotation.y = -flock.userData.ang;
+      for (const b of flock.userData.birds) {
+        b.bird.position.set(b.off[0], 0, b.off[2]);
+        const flap = Math.sin(time * 7 + b.bird.userData.ph) * .55;
+        b.bird.userData.wl.rotation.x = flap;
+        b.bird.userData.wr.rotation.x = -flap;
+      }
     }
     // 传送门旋转 + 吸入妖尘
     if (portal) {
@@ -2611,6 +2680,20 @@ const R3D = (() => {
     stepLights(dt);
     stepPillars(dt);
     for (const L of gateLamps) L.material.emissiveIntensity = 1.2 + Math.sin(time * 2.2) * .5;
+    // 山门受击红脉冲（gateHurt 由外部 leak 事件置位）
+    if (gateHurt > 0) {
+      gateHurt -= dt;
+      const k2 = Math.max(0, gateHurt);
+      const grp2 = gateGrp;
+      if (grp2) { grp2.position.x = C.GATE[0] + (Math.random() - .5) * k2 * 3; grp2.rotation.z = (Math.random() - .5) * k2 * .04; }
+      for (const L of gateLamps) { L.material.emissive.setRGB(.6 + k2, .18 * (1 - k2 * .8), .1); L.material.emissiveIntensity = 1.5 + k2 * 3; }
+    } else if (gateGrp) { gateGrp.position.x = C.GATE[0]; gateGrp.rotation.z = 0; }
+    // 动态妖气雾：波次越深雾越紫
+    const wPress = Math.min(1, (g.wave - 6) / 26);
+    if (wPress > 0) {
+      const fc = scene.fog.color;
+      fc.setRGB(.847 + (1 - .847) * wPress * .55, .812 - .16 * wPress, .729 + (0.72 - .729) * wPress);
+    }
     POST.render(scene, camera, time);
   }
 
@@ -2618,6 +2701,7 @@ const R3D = (() => {
     scene, camera, renderer, emit, boltFX, sync, render, toScreen, pickGround,
     ghost, ghostRing, ghostDisc, cam, applyCam, POST, flashLight, pillarFX, cine, deathStain,
     set shake(v) { shake = v; }, get shake() { return shake; },
+    set gateHurt(v) { gateHurt = Math.max(gateHurt, v); },
   };
 })();
 
@@ -2684,6 +2768,11 @@ function fxEvents(evs) {
       case "kill": {
         burstKill3D(ev.x, ev.y, ev.big);
         R3D.deathStain(ev.x, ev.y, ev.big);
+        // 魂魄升腾
+        for (let i = 0; i < (ev.big ? 14 : 6); i++) {
+          R3D.emit(ev.x + (Math.random() - .5) * 10, 8 + Math.random() * 6, ev.y + (Math.random() - .5) * 10,
+            { vy: 30 + Math.random() * 40, r: 1.5, col: 0xfff2d8, decay: .8, life: 1.6 });
+        }
         const now2 = performance.now();
         if (now2 - comboLast < 2000) comboN++; else comboN = 1;
         comboLast = now2;
@@ -2733,6 +2822,7 @@ function fxEvents(evs) {
       case "leak": {
         AudioFX.leak();
         shake = Math.max(shake, 5);
+        R3D.gateHurt = 1;
         const hv = document.getElementById("hurtVig");
         hv.style.opacity = .9;
         setTimeout(() => { hv.style.opacity = 0; }, 260);
@@ -2859,6 +2949,13 @@ function syncHUD() {
       `<div class="fpart"><span class="${p.boss ? 'boss' : (p.fly ? 'fly' : '')}">${p.boss ? "☠ " : (p.fly ? "☁ " : "")}${p.name}</span><span>×${p.count}</span></div>`
     ).join("") + `<div class="fpart" style="color:#8a6d1e"><span>清波奖励</span><span>${pv.bonus}</span></div>`;
   }
+  // BOSS 顶部大血条
+  const bh = $("bosshud");
+  const bossNow = g.enemies.find(e => e.type === "boss");
+  if (bossNow) {
+    bh.style.display = "block";
+    $("bossfill").style.width = (Math.max(0, bossNow.hp / bossNow.maxhp) * 100) + "%";
+  } else bh.style.display = "none";
   // 妖潮进度条（DOM）
   const bar = $("wavebar");
   if (g.phase === "wave" && g.waveTotal > 0) {
