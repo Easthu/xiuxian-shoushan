@@ -231,6 +231,7 @@ const R3D = (() => {
   renderer.toneMapping = THREE.ACESFilmicToneMapping; // 3A 级色调映射
   renderer.toneMappingExposure = .93;
 
+
   // ===== 后处理链（手写）：场景→HDR RT → 亮度提取 → 5级降采样模糊 → 合成(bloom/暗角/颗粒) =====
   const POST = (() => {
     const RW = 960, RH = 600;
@@ -294,6 +295,33 @@ const R3D = (() => {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xece4d2);
   scene.fog = new THREE.Fog(0xd8cfba, 680, 1350);
+  // ===== IBL 环境反射（PMREM 程序化天空场景 → scene.environment） =====
+  (function buildEnv() {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = new THREE.Scene();
+    const skyGeo = new THREE.SphereGeometry(100, 24, 16);
+    const skyCols = new Float32Array(skyGeo.attributes.position.count * 3);
+    const cT = new THREE.Color(0x8fb0c8), cM = new THREE.Color(0xdccdae), cG = new THREE.Color(0x6a5d48);
+    const t3 = new THREE.Color();
+    for (let i = 0; i < skyGeo.attributes.position.count; i++) {
+      const y = skyGeo.attributes.position.getY(i) / 100;
+      if (y > .15) t3.copy(cM).lerp(cT, Math.min(1, (y - .15) * 1.8));
+      else if (y > -.1) t3.copy(cG).lerp(cM, (y + .1) / .25);
+      else t3.copy(cG);
+      skyCols[i * 3] = t3.r; skyCols[i * 3 + 1] = t3.g; skyCols[i * 3 + 2] = t3.b;
+    }
+    skyGeo.setAttribute("color", new THREE.BufferAttribute(skyCols, 3));
+    envScene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+    const sunBall = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 10), new THREE.MeshBasicMaterial({ color: 0xfff2d8 }));
+    sunBall.position.set(36, 52, -20);
+    envScene.add(sunBall);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(100, 20), new THREE.MeshBasicMaterial({ color: 0x51473a }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -14;
+    envScene.add(ground);
+    const envRT = pmrem.fromScene(envScene, 0.06);
+    scene.environment = envRT.texture;
+    pmrem.dispose();
+  })();
 
   const camera = new THREE.PerspectiveCamera(46, 960 / 600, 1, 3200);
   // 轨道相机状态：右键旋转 / 滚轮缩放 / 中键平移（带惯性阻尼）
@@ -326,7 +354,8 @@ const R3D = (() => {
   sun.position.set(680, 620, 120);
   sun.target.position.set(480, 0, 300);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.radius = 3;
   sun.shadow.camera.left = -560; sun.shadow.camera.right = 560;
   sun.shadow.camera.top = 420; sun.shadow.camera.bottom = -420;
   sun.shadow.camera.near = 100; sun.shadow.camera.far = 1400;
@@ -352,6 +381,28 @@ const R3D = (() => {
     if (repeat) t.repeat.set(repeat[0], repeat[1]);
     t.anisotropy = 4;
     return t;
+  }
+  function normalFromTex(texObj, strength) {
+    const canvas = texObj.image, w = canvas.width, h = canvas.height;
+    const data = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+    const out = document.createElement("canvas"); out.width = w; out.height = h;
+    const octx = out.getContext("2d");
+    const oimg = octx.createImageData(w, h);
+    const hgt = (x, y) => { x = (x + w) % w; y = (y + h) % h; const i = (y * w + x) * 4; return (data[i] + data[i + 1] + data[i + 2]) / 765; };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const dx = (hgt(x - 1, y) - hgt(x + 1, y)) * strength;
+      const dy = (hgt(x, y - 1) - hgt(x, y + 1)) * strength;
+      const len = Math.hypot(dx, dy, 1);
+      const i = (y * w + x) * 4;
+      oimg.data[i] = (dx / len * .5 + .5) * 255;
+      oimg.data[i + 1] = (dy / len * .5 + .5) * 255;
+      oimg.data[i + 2] = (1 / len * .5 + .5) * 255;
+      oimg.data[i + 3] = 255;
+    }
+    octx.putImageData(oimg, 0, 0);
+    const t2 = new THREE.CanvasTexture(out);
+    t2.wrapS = t2.wrapT = THREE.RepeatWrapping;
+    return t2;
   }
   // 宣纸地面：纤维 + 墨点 + 晕渍 + 飞白
   const groundTex = makeTex(512, 512, (g) => {
@@ -405,6 +456,8 @@ const R3D = (() => {
     }
   });
   // 符盘面：同心刻痕 + 符文环 + 中央阴阳
+  const groundNormal = normalFromTex(groundTex, 2.4); groundNormal.repeat.set(10, 8);
+  const roadNormal = normalFromTex(roadTex, 3.6);
   const discTex = makeTex(256, 256, (g) => {
     g.fillStyle = "#e8e0ce"; g.fillRect(0, 0, 256, 256);
     for (let r = 34; r < 122; r += 11) { // 刻痕
@@ -485,7 +538,7 @@ const R3D = (() => {
     }
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .96, metalness: 0 });
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, map: groundTex, normalMap: groundNormal, normalScale: new THREE.Vector2(.7, .7), roughness: .96, metalness: 0 });
     const m = new THREE.Mesh(geo, mat);
     m.position.set(480, 0, 300);
     m.receiveShadow = true;
@@ -518,7 +571,7 @@ const R3D = (() => {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(posArr, 3));
     geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvArr, 2));
     geo.setIndex(idx); geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x574f45, roughness: .92 });
+    const mat = new THREE.MeshStandardMaterial({ map: roadTex, normalMap: roadNormal, normalScale: new THREE.Vector2(1.15, 1.15), roughness: .88 });
     const road = new THREE.Mesh(geo, mat);
     road.receiveShadow = true; road.castShadow = false;
     scene.add(road);
@@ -544,7 +597,7 @@ const R3D = (() => {
     // 石阶（沿曲线等距小贴片）
     const stepGeo = new THREE.CircleGeometry(2.6, 8);
     stepGeo.rotateX(-Math.PI / 2);
-    const steps = new THREE.InstancedMesh(stepGeo, new THREE.MeshStandardMaterial({ color: 0x3a342d, roughness: 1 }), Math.ceil(C.PLEN / 34) + 4);
+    const steps = new THREE.InstancedMesh(stepGeo, new THREE.MeshStandardMaterial({ map: roadTex, normalMap: roadNormal, roughness: 1 }), Math.ceil(C.PLEN / 34) + 4);
     const M = new THREE.Matrix4();
     let si = 0;
     for (let d = 34; d < C.PLEN - 10; d += 34) {
@@ -572,7 +625,7 @@ const R3D = (() => {
       shape.lineTo(width / 2, 0); shape.closePath();
       const geo = new THREE.ShapeGeometry(shape);
       const alpha = [.30, .18, .10][layer];
-      const mat = new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: alpha, depthWrite: false, fog: false });
+      const mat = new THREE.MeshBasicMaterial({ color: INK, map: ridgeTex, transparent: true, opacity: alpha, depthWrite: false, fog: false });
       const m = new THREE.Mesh(geo, mat);
       m.position.set(480 - layer * 60, 8, 285 - layer * 130 - 90);
       scene.add(m);
@@ -619,7 +672,7 @@ const R3D = (() => {
 
   // ---------- 淡月（球 + 程序辉光 sprite） ----------
   (function buildMoon() {
-    const moon = new THREE.Mesh(new THREE.SphereGeometry(17, 24, 18),
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(17, 40, 30),
       new THREE.MeshBasicMaterial({ color: 0xd8bc8a, fog: false }));
     moon.position.set(600, 135, 40);
     scene.add(moon);
@@ -648,10 +701,10 @@ const R3D = (() => {
         if (C.pathDistTo(x, z) < 46) continue;
         const grp = new THREE.Group();
         const s = .8 + R01(i + k) * .8;
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * s, 1.7 * s, 9 * s, 6), trunkMat);
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * s, 1.7 * s, 9 * s, 14), trunkMat);
         trunk.position.y = 4.5 * s; trunk.castShadow = true; grp.add(trunk);
         for (let l = 0; l < 3; l++) {
-          const cone = new THREE.Mesh(new THREE.ConeGeometry((7.5 - l * 2) * s, 6.5 * s, 7), pineMat);
+          const cone = new THREE.Mesh(new THREE.ConeGeometry((7.5 - l * 2) * s, 6.5 * s, 16), pineMat);
           cone.position.y = (8 + l * 4.2) * s; cone.castShadow = true; grp.add(cone);
         }
         grp.position.set(x, elev(x, z) - .5, z);
@@ -950,10 +1003,10 @@ const R3D = (() => {
   (function buildGate() {
     const [gx, gz] = C.GATE;
     const grp = new THREE.Group();
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a2f28, roughness: .7 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a2f28, map: woodTex, roughness: .7 });
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6b6355, roughness: .9 });
     for (const s of [-1, 1]) {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.8, 40, 8), woodMat);
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.8, 40, 18), woodMat);
       pillar.position.set(s * 22, 20, 0); pillar.castShadow = true; grp.add(pillar);
       const base = new THREE.Mesh(new THREE.BoxGeometry(10, 4, 10), stoneMat);
       base.position.set(s * 22, 2, 0); base.castShadow = true; grp.add(base);
@@ -968,7 +1021,7 @@ const R3D = (() => {
     // 灯笼 ×2（摆动 + 自发光）
     const lampMats = [];
     for (const s of [-1, 1]) {
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(3.4, 10, 8),
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(3.4, 20, 16),
         new THREE.MeshStandardMaterial({ color: 0xdf9e3c, emissive: 0xdf8a2c, emissiveIntensity: 1.4, roughness: .4 }));
       lamp.position.set(s * 30, 33, 0); grp.add(lamp); lampMats.push(lamp);
       const tassel = new THREE.Mesh(new THREE.ConeGeometry(1.4, 4, 6),
@@ -1040,49 +1093,49 @@ const R3D = (() => {
     const F = C.FOES[type]; const r = F.r * .9;
     switch (type) {
       case "grunt": {
-        const body = M(new THREE.SphereGeometry(r, 12, 10)); body.scale.set(1.25, .9, .95); body.position.y = r * .8;
-        const head = M(new THREE.SphereGeometry(r * .55, 10, 8)); head.position.set(-r * 1.1, r * 1.15, 0);
-        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .22, r * .6, 5)); ear.position.set(-r * 1.15, r * 1.7, s * r * .3); ear.rotation.z = -.4; }
-        const tail = M(new THREE.ConeGeometry(r * .3, r * 1.5, 6)); tail.position.set(r * 1.4, r * 1.1, 0); tail.rotation.z = Math.PI / 2.4;
+        const body = M(new THREE.SphereGeometry(r, 28, 22)); body.scale.set(1.25, .9, .95); body.position.y = r * .8;
+        const head = M(new THREE.SphereGeometry(r * .55, 22, 18)); head.position.set(-r * 1.1, r * 1.15, 0);
+        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .22, r * .6, 14)); ear.position.set(-r * 1.15, r * 1.7, s * r * .3); ear.rotation.z = -.4; }
+        const tail = M(new THREE.ConeGeometry(r * .3, r * 1.5, 16)); tail.position.set(r * 1.4, r * 1.1, 0); tail.rotation.z = Math.PI / 2.4;
         break;
       }
       case "fox": {
-        const body = M(new THREE.SphereGeometry(r, 12, 10)); body.scale.set(1.9, .75, .7); body.position.y = r * .7;
-        const head = M(new THREE.ConeGeometry(r * .5, r * 1.1, 8)); head.position.set(-r * 1.7, r * .95, 0); head.rotation.z = Math.PI / 2;
-        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .22, r * .8, 4)); ear.position.set(-r * 1.5, r * 1.6, s * r * .25); }
-        const tail = M(new THREE.ConeGeometry(r * .42, r * 1.9, 7)); tail.position.set(r * 2.0, r * .9, 0); tail.rotation.z = -Math.PI / 2.2;
+        const body = M(new THREE.SphereGeometry(r, 28, 22)); body.scale.set(1.9, .75, .7); body.position.y = r * .7;
+        const head = M(new THREE.ConeGeometry(r * .5, r * 1.1, 20)); head.position.set(-r * 1.7, r * .95, 0); head.rotation.z = Math.PI / 2;
+        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .22, r * .8, 12)); ear.position.set(-r * 1.5, r * 1.6, s * r * .25); }
+        const tail = M(new THREE.ConeGeometry(r * .42, r * 1.9, 18)); tail.position.set(r * 2.0, r * .9, 0); tail.rotation.z = -Math.PI / 2.2;
         break;
       }
       case "scale": {
-        const body = M(new THREE.SphereGeometry(r, 14, 10)); body.scale.set(1.15, .95, 1.5); body.position.y = r * .85;
-        const armor = new THREE.Mesh(new THREE.SphereGeometry(r * .95, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        const body = M(new THREE.SphereGeometry(r, 30, 24)); body.scale.set(1.15, .95, 1.5); body.position.y = r * .85;
+        const armor = new THREE.Mesh(new THREE.SphereGeometry(r * .95, 26, 18, 0, Math.PI * 2, 0, Math.PI / 2),
           new THREE.MeshStandardMaterial({ color: 0x55606a, roughness: .55, metalness: .5 }));
         armor.position.y = r * .85; armor.castShadow = true; grp.add(armor); mats.push(armor);
-        const head = M(new THREE.SphereGeometry(r * .45, 8, 6)); head.position.set(0, r * .95, -r * 1.45);
+        const head = M(new THREE.SphereGeometry(r * .45, 20, 16)); head.position.set(0, r * .95, -r * 1.45);
         break;
       }
       case "boat": {
         const hull = M(new THREE.SphereGeometry(r, 12, 8)); hull.scale.set(2.1, .55, .8); hull.position.y = r * 1.1;
-        const mast = M(new THREE.CylinderGeometry(.7, .7, r * 2.6, 5)); mast.position.y = r * 2.1;
+        const mast = M(new THREE.CylinderGeometry(.7, .7, r * 2.6, 14)); mast.position.y = r * 2.1;
         const sail = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.9, r * 1.6),
           new THREE.MeshStandardMaterial({ color: 0x6b5a7a, roughness: .9, side: THREE.DoubleSide }));
         sail.position.set(0, r * 2.3, r * .5); sail.rotation.y = .35; grp.add(sail); mats.push(sail);
-        const cloud = new THREE.Mesh(new THREE.SphereGeometry(r * 1.2, 10, 8),
+        const cloud = new THREE.Mesh(new THREE.SphereGeometry(r * 1.2, 24, 18),
           new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 1, transparent: true, opacity: .85 }));
         cloud.scale.y = .35; cloud.position.y = r * .3; grp.add(cloud);
         break;
       }
       case "wolf": {
-        const body = M(new THREE.SphereGeometry(r, 12, 9)); body.scale.set(1.7, .68, .62); body.position.y = r * .62;
-        const head = M(new THREE.SphereGeometry(r * .42, 8, 7)); head.position.set(-r * 1.55, r * .9, 0);
-        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .18, r * .55, 4)); ear.position.set(-r * 1.5, r * 1.35, s * r * .2); }
-        const tail = M(new THREE.ConeGeometry(r * .26, r * 1.3, 6)); tail.position.set(r * 1.75, r * .8, 0); tail.rotation.z = -Math.PI / 1.9;
+        const body = M(new THREE.SphereGeometry(r, 28, 20)); body.scale.set(1.7, .68, .62); body.position.y = r * .62;
+        const head = M(new THREE.SphereGeometry(r * .42, 20, 16)); head.position.set(-r * 1.55, r * .9, 0);
+        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .18, r * .55, 12)); ear.position.set(-r * 1.5, r * 1.35, s * r * .2); }
+        const tail = M(new THREE.ConeGeometry(r * .26, r * 1.3, 16)); tail.position.set(r * 1.75, r * .8, 0); tail.rotation.z = -Math.PI / 1.9;
         break;
       }
       case "treant": {
-        const trunk = M(new THREE.CylinderGeometry(r * .42, r * .62, r * 2.2, 7)); trunk.position.y = r * 1.1;
+        const trunk = M(new THREE.CylinderGeometry(r * .42, r * .62, r * 2.2, 18)); trunk.position.y = r * 1.1;
         for (const s of [-1, 1]) {
-          const arm = M(new THREE.CylinderGeometry(r * .16, r * .22, r * 1.5, 5));
+          const arm = M(new THREE.CylinderGeometry(r * .16, r * .22, r * 1.5, 14));
           arm.position.set(s * r * 1.0, r * 1.7, 0); arm.rotation.z = s * -.8;
         }
         const leafMat = new THREE.MeshStandardMaterial({ color: 0x5a6b3d, roughness: .95 });
@@ -1093,7 +1146,7 @@ const R3D = (() => {
         break;
       }
       case "boss": {
-        const body = M(new THREE.SphereGeometry(r, 16, 12)); body.scale.set(1.3, 1, 1.05); body.position.y = r * .95;
+        const body = M(new THREE.SphereGeometry(r, 34, 26)); body.scale.set(1.3, 1, 1.05); body.position.y = r * .95;
         // 背部鬃毛棘刺（发光暗红）
         const spikeMat = new THREE.MeshStandardMaterial({ color: 0x6b1f1a, emissive: 0x4a0e08, emissiveIntensity: .9, roughness: .5 });
         for (let i = 0; i < 6; i++) {
@@ -1109,14 +1162,14 @@ const R3D = (() => {
         aura.position.y = r * 1.4;
         grp.add(aura);
         grp.userData.aura = aura;
-        const head = M(new THREE.SphereGeometry(r * .55, 10, 8)); head.position.set(-r * 1.15, r * 1.5, 0);
+        const head = M(new THREE.SphereGeometry(r * .55, 22, 18)); head.position.set(-r * 1.15, r * 1.5, 0);
         for (const s of [-1, 1]) {
-          const horn = M(new THREE.ConeGeometry(r * .18, r * 1.3, 6));
+          const horn = M(new THREE.ConeGeometry(r * .18, r * 1.3, 14));
           horn.position.set(-r * (s > 0 ? 1.35 : .95), r * 2.2, s * r * .3);
           horn.rotation.z = s * .45;
         }
         for (let i = 0; i < 5; i++) {
-          const mane = M(new THREE.ConeGeometry(r * .16, r * .7, 4));
+          const mane = M(new THREE.ConeGeometry(r * .16, r * .7, 12));
           mane.position.set(-r * .3 + i * r * .34, r * 1.95, 0);
         }
         break;
@@ -1163,19 +1216,19 @@ const R3D = (() => {
     const R = isF ? 20 : 15;
     const hex = ELE_HEX[st.ele || "blend"] || PURPLE;
     // 石台
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(R + 2, R + 4, 5, isF ? 10 : 8),
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(R + 2, R + 4, 5, isF ? 20 : 16),
       new THREE.MeshStandardMaterial({ color: 0x7d7468, roughness: .92 }));
     base.position.y = 2.5; base.castShadow = true; base.receiveShadow = true; grp.add(base);
     // 符盘
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 2.4, isF ? 12 : 10),
-      new THREE.MeshStandardMaterial({ color: 0xe8e0ce, roughness: .85 }));
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 2.4, isF ? 24 : 20),
+      new THREE.MeshStandardMaterial({ map: discTex, roughness: .85 }));
     disc.position.y = 6.2; disc.receiveShadow = true; grp.add(disc);
     // 属性环（发光）
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(R - 4, 1.5, 10, isF ? 32 : 24),
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(R - 4, 1.5, 14, isF ? 44 : 36),
       new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 1.35, roughness: .5 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = 7.6; grp.add(ring);
     // 内环（反向）
-    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(R - 8, .9, 6, 20),
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(R - 8, .9, 10, 30),
       new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: .85, roughness: .6 }));
     ring2.rotation.x = Math.PI / 2; ring2.position.y = 7.6; grp.add(ring2);
     // 塔基辉光（属性色贴地光斑）
@@ -1189,7 +1242,7 @@ const R3D = (() => {
     glowSpr.position.y = 4;
     grp.add(glowSpr);
     // 太极芯
-    const core = new THREE.Mesh(new THREE.SphereGeometry(3.4, 10, 8),
+    const core = new THREE.Mesh(new THREE.SphereGeometry(3.4, 20, 16),
       new THREE.MeshStandardMaterial({ color: INK, roughness: .6 }));
     core.position.y = 8.6; grp.add(core);
     const dot = new THREE.Mesh(new THREE.SphereGeometry(1.2, 6, 5),
