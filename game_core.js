@@ -384,6 +384,7 @@
     }
     g.phase = "wave";
     g.waveBonus = w.bonus;
+    g.waveTotal = g.buildQueue.length; // 渲染进度条用
     return true;
   }
     // 下一波预告（渲染 UI 用）

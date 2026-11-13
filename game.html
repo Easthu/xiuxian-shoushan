@@ -14,7 +14,11 @@
   #hud{width:100%;max-width:1180px;display:flex;justify-content:space-between;align-items:center;padding:8px 16px;gap:10px}
   #hud .grp{display:flex;gap:14px;align-items:baseline}
   .stat{font-size:17px;letter-spacing:2px;white-space:nowrap}
-  .stat b{color:var(--red);font-size:19px}
+  .stat b{color:var(--red);font-size:19px;display:inline-block;transition:transform .1s}
+  .stat b.bump{animation:bump .3s ease-out}
+  @keyframes bump{0%{transform:scale(1)}35%{transform:scale(1.35)}100%{transform:scale(1)}}
+  .stat b.hurt{animation:hurt .45s ease-out}
+  @keyframes hurt{0%{transform:translateX(0)}25%{transform:translateX(-3px);color:#000}50%{transform:translateX(3px)}75%{transform:translateX(-2px)}100%{transform:translateX(0)}}
   .stat .qi{color:var(--cyan)}
   #title{font-size:26px;letter-spacing:10px;text-shadow:1px 1px 0 rgba(158,43,37,.25)}
   #sub{font-size:11px;color:#8a7f68;letter-spacing:2px;margin-top:2px;text-align:center}
@@ -496,6 +500,7 @@
     }
     g.phase = "wave";
     g.waveBonus = w.bonus;
+    g.waveTotal = g.buildQueue.length; // 渲染进度条用
     return true;
   }
     // 下一波预告（渲染 UI 用）
@@ -1072,6 +1077,7 @@ let mouseX = -99, mouseY = -99;
 let speed = 1;
 let shake = 0;              // 震屏强度
 let floaters = [];          // 飘字
+let fxLines = [];           // 短命特效线（闪电/斩痕/符阵圈），渲染末段绘制避免被背景覆盖
 let codexSaved = JSON.parse(localStorage.getItem(C.SAVE_KEY) || "null");
 let newCodexKeys = new Set(Object.keys((codexSaved && codexSaved.codex) || {}));  // 本会话已见
 
@@ -1134,7 +1140,7 @@ function floatText(x, y, text, col, size) {
 /* ---------------- 背景（程序化水墨氛围） ---------------- */
 // 固定随机装饰（每局同构）
 const R01 = (i) => { const x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); };
-const decor = { grass: [], pines: [], rocks: [] };
+const decor = { grass: [], pines: [], rocks: [], stains: [], bamboo: [], lanterns: [] };
 (function initDecor() {
   // 山道两侧苔点/枯草
   for (let i = 0; i < 130; i++) {
@@ -1156,6 +1162,20 @@ const decor = { grass: [], pines: [], rocks: [] };
     const [x, y] = C.posAt(d), n = C.pathNormal(d);
     decor.rocks.push({ x: x + n[0] * off * side, y: y + n[1] * off * side, s: 4 + R01(i + 800) * 7, i });
   }
+  // 宣纸晕渍（大面积年代感）
+  for (let i = 0; i < 7; i++) {
+    decor.stains.push({ x: R01(i + 900) * W, y: R01(i + 910) * H, r: 60 + R01(i + 920) * 120, a: .018 + R01(i + 930) * .02, ro: R01(i + 940) * Math.PI });
+  }
+  // 竹丛（左上，避开路径首段 y=110 以下才放）
+  for (let i = 0; i < 9; i++) {
+    decor.bamboo.push({ x: 40 + R01(i + 950) * 90, y: 210 + R01(i + 960) * 90, h: 70 + R01(i + 970) * 60, ph: R01(i + 980) * TAU, lean: (R01(i + 990) - .5) * .3 });
+  }
+  // 石灯笼（沿山道等距，仪式感）
+  for (let d = 260; d < C.PLEN - 200; d += 430) {
+    const n = C.pathNormal(d), side = ((d / 430) | 0) % 2 ? 1 : -1;
+    const [x, y] = C.posAt(d);
+    decor.lanterns.push({ x: x + n[0] * 33 * side, y: y + n[1] * 33 * side, ph: d * .01 });
+  }
 })();
 let geese = []; // 雁阵
 (function initGeese() {
@@ -1166,6 +1186,27 @@ function drawBG(t) {
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, "#ece4d2"); bg.addColorStop(.7, "#e8e0ce"); bg.addColorStop(1, "#e2d7c0");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // 宣纸晕渍（年代感）
+  for (const st of decor.stains) {
+    const gr = ctx.createRadialGradient(st.x, st.y, 0, st.x, st.y, st.r);
+    gr.addColorStop(0, `rgba(139,117,78,${st.a})`); gr.addColorStop(.7, `rgba(139,117,78,${st.a * .5})`); gr.addColorStop(1, "rgba(139,117,78,0)");
+    ctx.save(); ctx.translate(st.x, st.y); ctx.rotate(st.ro); ctx.scale(1, .7);
+    ctx.translate(-st.x, -st.y);
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // 淡月（右上，光晕+云遮）
+  ctx.save();
+  const mx = 876, my = 64;
+  const halo = ctx.createRadialGradient(mx, my, 0, mx, my, 64);
+  halo.addColorStop(0, "rgba(198,168,96,.30)"); halo.addColorStop(.45, "rgba(198,168,96,.10)"); halo.addColorStop(1, "rgba(198,168,96,0)");
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(mx, my, 64, 0, TAU); ctx.fill();
+  ctx.fillStyle = "rgba(212,186,120,.55)"; ctx.beginPath(); ctx.arc(mx, my, 22, 0, TAU); ctx.fill();
+  ctx.fillStyle = "rgba(232,224,206,.8)"; ctx.beginPath(); ctx.arc(mx - 5, my - 4, 17, 0, TAU); ctx.fill(); // 月面留白
+  ctx.globalAlpha = .12; ctx.fillStyle = INK; // 月面皴点
+  ctx.beginPath(); ctx.arc(mx + 6, my + 5, 3, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(mx - 2, my + 9, 2, 0, TAU); ctx.fill();
+  ctx.restore();
   // 远山三层
   ctx.save();
   const mts = [
@@ -1224,9 +1265,88 @@ function drawBG(t) {
   }
   ctx.restore();
   drawPath(t);
+  drawStream(t);
   drawPines(t);
+  drawBamboo(t);
+  drawLanterns(t);
   drawGate(t);
   drawSpawnVortex(t);
+}
+// 溪流（右缘蜿蜒淡青线 + 波光）
+function drawStream(t) {
+  ctx.save();
+  // 三条平行主线
+  for (let k = 0; k < 3; k++) {
+    ctx.beginPath(); ctx.moveTo(870 + k * 9, 30);
+    ctx.bezierCurveTo(900 + k * 10, 160, 830 + k * 8, 300, 905 + k * 9, 420);
+    ctx.bezierCurveTo(930 + k * 8, 480, 900 + k * 8, 540, 940 + k * 7, 600);
+    ctx.strokeStyle = `rgba(61,107,107,${.14 + k * .05})`; ctx.lineWidth = 2.4 - k * .6; ctx.lineCap = "round";
+    ctx.stroke();
+  }
+  // 波光短线（沿曲线闪烁）
+  for (let i = 0; i < 10; i++) {
+    const tt2 = (i / 10 + (t * .05)) % 1;
+    const y = 40 + tt2 * 520;
+    const x = 870 + Math.sin(y * .012) * 26 + i % 3 * 8;
+    ctx.globalAlpha = .25 + Math.sin(t * 2.4 + i * 1.7) * .18;
+    ctx.strokeStyle = "rgba(120,170,165,.8)"; ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.quadraticCurveTo(x, y - 2.4, x + 5, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+// 竹丛（左下，随风摆）
+function drawBamboo(t) {
+  ctx.save();
+  for (const b of decor.bamboo) {
+    const sway = Math.sin(t * 1.1 + b.ph) * 3.2;
+    ctx.strokeStyle = "rgba(61,107,107,.55)"; ctx.lineWidth = 2.2; ctx.lineCap = "round";
+    // 竿（两节）
+    ctx.beginPath(); ctx.moveTo(b.x, b.y);
+    ctx.quadraticCurveTo(b.x + b.lean * 20 + sway * .4, b.y - b.h * .55, b.x + b.lean * 34 + sway, b.y - b.h);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(b.x + b.lean * 34 + sway, b.y - b.h);
+    ctx.quadraticCurveTo(b.x + b.lean * 44 + sway * 1.4, b.y - b.h * 1.25, b.x + b.lean * 50 + sway * 1.8, b.y - b.h * 1.45);
+    ctx.stroke();
+    // 竹节
+    ctx.lineWidth = 1;
+    for (let s = .3; s < 1; s += .3) {
+      const jx = b.x + b.lean * 34 * s + sway * s, jy = b.y - b.h * s;
+      ctx.beginPath(); ctx.moveTo(jx - 2.4, jy); ctx.lineTo(jx + 2.4, jy - 1); ctx.stroke();
+    }
+    // 顶部叶簇（三撇）
+    ctx.strokeStyle = "rgba(90,107,61,.6)"; ctx.lineWidth = 1.3;
+    const lx = b.x + b.lean * 50 + sway * 1.8, ly = b.y - b.h * 1.45;
+    for (let f = 0; f < 3; f++) {
+      const fa = -2.4 + f * .8 + Math.sin(t * 1.3 + b.ph) * .08;
+      ctx.beginPath(); ctx.moveTo(lx, ly);
+      ctx.quadraticCurveTo(lx + Math.cos(fa) * 9, ly + Math.sin(fa) * 9 - 3, lx + Math.cos(fa) * 15, ly + Math.sin(fa) * 15);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+// 石灯笼（沿山道，暖光呼吸）
+function drawLanterns(t) {
+  ctx.save();
+  for (const L of decor.lanterns) {
+    ctx.globalAlpha = .55;
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    // 柱 + 顶
+    ctx.beginPath(); ctx.moveTo(L.x, L.y); ctx.lineTo(L.x, L.y - 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(L.x - 5, L.y - 14); ctx.lineTo(L.x + 5, L.y - 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(L.x - 3.4, L.y - 14); ctx.lineTo(L.x - 3.4, L.y - 20); ctx.moveTo(L.x + 3.4, L.y - 14); ctx.lineTo(L.x + 3.4, L.y - 20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(L.x - 6, L.y - 20); ctx.quadraticCurveTo(L.x, L.y - 26, L.x + 6, L.y - 20); ctx.stroke();
+    // 暖光（呼吸）
+    const glow = .5 + Math.sin(t * 2.2 + L.ph) * .25;
+    const gr = ctx.createRadialGradient(L.x, L.y - 17, 0, L.x, L.y - 17, 11);
+    gr.addColorStop(0, `rgba(224,170,86,${.5 * glow + .2})`); gr.addColorStop(1, "rgba(224,170,86,0)");
+    ctx.globalAlpha = 1; ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(L.x, L.y - 17, 11, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(240,200,120,${.65 + glow * .25})`;
+    ctx.beginPath(); ctx.arc(L.x, L.y - 17, 2, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
 }
 // 山道：多层笔触 + 石阶 + 飞白
 function drawPath(t) {
@@ -1337,6 +1457,18 @@ function drawFoe(e, t) {
     ctx.save(); ctx.globalAlpha = .18; ctx.fillStyle = INK;
     ctx.beginPath(); ctx.ellipse(6, 26, 12, 4, 0, 0, TAU); ctx.fill(); ctx.restore();
     ctx.translate(0, Math.sin(t * 2.4 + e.wob) * 2.6 - 10);
+  } else { // 走兽投影（随步伐起伏缩放）
+    ctx.save(); ctx.globalAlpha = .14; ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.ellipse(1.5, e.r * .78 + 1.5, e.r * (.85 + wob * .06), e.r * .3, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // BOSS 脚步震波
+  if (e.type === "boss" && Math.random() < .1) {
+    P(x + (Math.random() - .5) * 14, y + e.r * .7, { type: "ring", r: 5, col: "rgba(43,38,32,.35)", decay: 2.8, life: .7 });
+  }
+  // 减速霜渍（脚下留痕）
+  if (e.slowT > 0 && Math.random() < .35) {
+    P(x + (Math.random() - .5) * 10, y + e.r * .5, { r: 1.6, col: "rgba(120,170,165,.5)", decay: .55, life: 1.5 });
   }
   ctx.globalAlpha = .92; ctx.fillStyle = INK;
   const r = e.r;
@@ -1559,6 +1691,40 @@ function drawTower(t, time) {
     ctx.fillStyle = t.lvl === 3 ? RED : INK;
     ctx.beginPath(); ctx.arc(Math.cos(a) * (R + 6), Math.sin(a) * (R + 6), 2, 0, TAU); ctx.fill();
   }
+  // 三级阵法：环绕飞剑 / 符珠
+  if (t.lvl === 3 && (st.rate || 0) > 0) {
+    const n = 3, orbit = R + 13, spin = t.spin * 1.6;
+    if (st.proj === "sword" || st.proj === "frostSword" || st.proj === "thunderSword" || st.proj === "fireSword") {
+      for (let i = 0; i < n; i++) {
+        const a = spin + i * TAU / n;
+        ctx.save(); ctx.translate(Math.cos(a) * orbit, Math.sin(a) * orbit * .82); ctx.rotate(a + Math.PI / 2);
+        ctx.strokeStyle = c1; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(-4.5, 0); ctx.lineTo(4.5, 0); ctx.stroke();
+        ctx.strokeStyle = "rgba(255,252,240,.85)"; ctx.lineWidth = .7;
+        ctx.beginPath(); ctx.moveTo(-2.4, 0); ctx.lineTo(2.4, 0); ctx.stroke();
+        ctx.restore();
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        const a = spin * .8 + i * TAU / n;
+        ctx.fillStyle = c1; ctx.globalAlpha = .85;
+        ctx.beginPath(); ctx.arc(Math.cos(a) * orbit, Math.sin(a) * orbit * .82, 1.8, 0, TAU); ctx.fill();
+      }
+    }
+  }
+  // 境界绕行金粒（金丹 2 粒 / 元婴 4 粒）
+  if ((t.realm || 0) >= 2) {
+    const nOrb = t.realm >= 3 ? 4 : 2;
+    for (let i = 0; i < nOrb; i++) {
+      const a = -t.spin * 1.2 + i * TAU / nOrb;
+      const ox = Math.cos(a) * (R + 5), oy = Math.sin(a) * (R + 5) * .66;
+      ctx.fillStyle = "rgba(214,174,90,.9)";
+      ctx.beginPath(); ctx.arc(ox, oy, 1.5, 0, TAU); ctx.fill();
+      const gr = ctx.createRadialGradient(ox, oy, 0, ox, oy, 4.5);
+      gr.addColorStop(0, "rgba(214,174,90,.4)"); gr.addColorStop(1, "rgba(214,174,90,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(ox, oy, 4.5, 0, TAU); ctx.fill();
+    }
+  }
   // 境界光环（每境一圈金环）
   for (let i = 0; i < (t.realm || 0); i++) {
     ctx.strokeStyle = `rgba(168,132,44,${.5 - i * .12})`; ctx.lineWidth = 1.6;
@@ -1671,42 +1837,62 @@ function fxEvents(evs) {
       case "hit":
         burstHit(ev.x, ev.y, ev.ele);
         if (ev.crit) { floatText(ev.x, ev.y - 14, "暴 " + ev.dmg, RED, 15); P(ev.x, ev.y, { type: "ring", r: 10, col: "rgba(158,43,37,.7)", decay: 3 }); }
+        // 剑系命中斩痕（交叉白线，随角度微变）
+        if (ev.ele === "metal" || ev.ele === "ice") {
+          const a0 = Math.random() * Math.PI;
+          const col = ev.ele === "ice" ? "rgba(191,227,224," : "rgba(255,252,240,";
+          fxLines.push({ life: 1, decay: 8.5, draw(c) {
+            c.save(); c.translate(ev.x, ev.y); c.rotate(a0);
+            c.strokeStyle = col + (.95 * this.life) + ")"; c.lineWidth = 1.6; c.lineCap = "round";
+            c.beginPath(); c.moveTo(-8 * this.life - 3, 0); c.lineTo(8 * this.life + 3, 0); c.stroke();
+            c.rotate(1.1);
+            c.lineWidth = 1;
+            c.beginPath(); c.moveTo(-6 * this.life - 2, 0); c.lineTo(6 * this.life + 2, 0); c.stroke();
+            c.restore();
+          } });
+        }
         break;
       case "kill":
         burstKill(ev.x, ev.y, ev.big);
         AudioFX.kill();
         floatText(ev.x, ev.y - 10, "+" + ev.bounty, "#8a6d1e", 12);
         break;
-      case "bolt": { // 落雷
+      case "bolt": { // 落雷（存入暂存线，渲染末段绘制，否则被背景覆盖）
         AudioFX.thunder();
         const x0 = ev.x, y0 = ev.y, x1 = ev.tx, y1 = ev.ty;
-        // 锯齿闪电线
-        ctx.save(); ctx.globalCompositeOperation = "multiply";
-        ctx.strokeStyle = "rgba(168,132,44,.9)"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(x0, y0 - 40);
-        const steps = 6;
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          ctx.lineTo(x0 + (x1 - x0) * t + (Math.random() - .5) * 16, y0 - 40 + (y1 - (y0 - 40)) * t + (Math.random() - .5) * 8);
+        const zig = [];
+        const nSeg = 6;
+        for (let i = 0; i <= nSeg; i++) {
+          const tt2 = i / nSeg;
+          zig.push([x0 + (x1 - x0) * tt2 + (i === 0 || i === nSeg ? 0 : (Math.random() - .5) * 16),
+                    (y0 - 40) + (y1 - (y0 - 40)) * tt2 + (i === 0 || i === nSeg ? 0 : (Math.random() - .5) * 8)]);
         }
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(255,250,220,.9)"; ctx.lineWidth = 1; ctx.stroke();
-        ctx.restore();
+        fxLines.push({ life: 1, decay: 7, draw(c) {
+          c.lineCap = "round"; c.lineJoin = "round";
+          c.strokeStyle = `rgba(168,132,44,${.9 * this.life})`; c.lineWidth = 2.6;
+          c.beginPath(); c.moveTo(zig[0][0], zig[0][1]);
+          for (let i = 1; i < zig.length; i++) c.lineTo(zig[i][0], zig[i][1]);
+          c.stroke();
+          c.strokeStyle = `rgba(255,250,220,${.9 * this.life})`; c.lineWidth = 1; c.stroke();
+        } });
         P(x1, y1, { type: "ring", r: 14, col: "rgba(168,132,44,.6)", decay: 3 });
         for (let i = 0; i < 6; i++) P(x1, y1, { vx: (Math.random() - .5) * 160, vy: -Math.random() * 130, r: 1.6, col: GOLD, decay: 2.6, grav: 300 });
         shake = Math.max(shake, 2.5);
         break;
       }
-      case "chain": { // 连锁弧
-        ctx.save();
-        ctx.strokeStyle = "rgba(168,132,44,.75)"; ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(ev.x, ev.y);
-        const seg = 4;
-        for (let i = 1; i <= seg; i++) {
-          const t = i / seg;
-          ctx.lineTo(ev.x + (ev.tx - ev.x) * t + (Math.random() - .5) * 10, ev.y + (ev.ty - ev.y) * t + (Math.random() - .5) * 10);
+      case "chain": { // 连锁弧（同上，暂存线）
+        const pts = [[ev.x, ev.y]];
+        for (let i = 1; i <= 4; i++) {
+          const tt2 = i / 4;
+          pts.push([ev.x + (ev.tx - ev.x) * tt2 + (i === 4 ? 0 : (Math.random() - .5) * 10),
+                    ev.y + (ev.ty - ev.y) * tt2 + (i === 4 ? 0 : (Math.random() - .5) * 10)]);
         }
-        ctx.stroke(); ctx.restore();
+        fxLines.push({ life: 1, decay: 9, draw(c) {
+          c.strokeStyle = `rgba(168,132,44,${.75 * this.life})`; c.lineWidth = 1.6; c.lineCap = "round";
+          c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+          c.stroke();
+        } });
         break;
       }
       case "boom": { // 溅射墨爆
@@ -1717,9 +1903,31 @@ function fxEvents(evs) {
           const a = Math.random() * TAU;
           P(ev.x, ev.y, { vx: Math.cos(a) * 90, vy: Math.sin(a) * 90 - 30, r: 1.8, col: ev.ele === "fire" ? "#c45a28" : PURPLE, decay: 2, grav: 160 });
         }
+        // 火系爆点烟柱（缓慢升腾的深色烟团）
+        if (ev.ele === "fire") {
+          for (let i = 0; i < 5; i++) {
+            P(ev.x + (Math.random() - .5) * ev.r * .6, ev.y - 4,
+              { vy: -22 - Math.random() * 18, vx: (Math.random() - .5) * 12, r: 3.4 + Math.random() * 2.6,
+                col: "rgba(70,62,54,.34)", decay: .8, life: 1.6 });
+          }
+        }
         break;
       }
-      case "stun": P(ev.x, ev.y, { type: "ring", r: 8, col: "rgba(159,216,211,.8)", decay: 2.6 }); break;
+      case "stun": // 定身：脚下浮现符阵圈
+        P(ev.x, ev.y, { type: "ring", r: 8, col: "rgba(159,216,211,.8)", decay: 2.6 });
+        fxLines.push({ life: 1, decay: 1.1, draw(c) {
+          c.save(); c.translate(ev.x, ev.y);
+          c.strokeStyle = `rgba(120,170,165,${.8 * this.life})`; c.lineWidth = 1.2;
+          c.beginPath(); c.ellipse(0, 3, 16, 6.5, 0, 0, TAU); c.stroke();
+          c.beginPath(); c.ellipse(0, 3, 10, 4, 0, 0, TAU); c.stroke();
+          for (let i = 0; i < 4; i++) {
+            const a = i * TAU / 4 + .5;
+            c.beginPath(); c.moveTo(Math.cos(a) * 13, 3 + Math.sin(a) * 5.4);
+            c.lineTo(Math.cos(a) * 18.5, 3 + Math.sin(a) * 7.6); c.stroke();
+          }
+          c.restore();
+        } });
+        break;
       case "leak":
         AudioFX.leak();
         shake = Math.max(shake, 5);
@@ -1771,11 +1979,30 @@ function bigLabel(msg) {
   const el = $("wlabel"); el.textContent = msg; el.style.opacity = 1;
   clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 2000);
 }
+const _hudPrev = {};
+function bumpIf(id, v) { // 值变化时弹一下
+  const el = $(id);
+  if (_hudPrev[id] !== v) {
+    const up = (v > (_hudPrev[id] ?? v));
+    el.textContent = v;
+    el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
+    _hudPrev[id] = v;
+  }
+}
+function bumpSet(id, v, isHurt) { // 变化时按增减播放不同动画
+  const el = $(id);
+  if (_hudPrev[id] !== undefined && _hudPrev[id] !== v) {
+    el.textContent = v;
+    const cls = v < _hudPrev[id] && isHurt ? "hurt" : "bump";
+    el.classList.remove("bump", "hurt"); void el.offsetWidth; el.classList.add(cls);
+  } else if (_hudPrev[id] === undefined) el.textContent = v;
+  _hudPrev[id] = v;
+}
 function syncHUD() {
-  $("gold").textContent = Math.floor(g.gold);
-  $("qi").textContent = Math.floor(g.qi);
-  $("lives").textContent = g.lives;
-  $("kills").textContent = g.kills;
+  bumpIf("gold", Math.floor(g.gold));
+  bumpIf("qi", Math.floor(g.qi));
+  bumpSet("lives", g.lives, true);
+  bumpIf("kills", g.kills);
   $("waven").textContent = g.endless ? g.wave + 1 : Math.min(g.wave + 1, 30);
   $("best").textContent = (codexSaved && codexSaved.bestWave) ? codexSaved.bestWave : "—";
   $("phasen").textContent = g.phase === "build" ? "备战" : g.phase === "wave" ? (g.endless ? "无尽妖潮" : "妖潮中") : g.phase === "win" ? "守山功成" : "山门失守";
@@ -2034,6 +2261,20 @@ function frame(now) {
   for (const p of g.projectiles) drawProjectile(p);
   drawParts();
   drawPlacementGhost();
+  // 短命特效线（闪电/斩痕/符阵圈）——所有实体之后绘制
+  for (let i = fxLines.length - 1; i >= 0; i--) {
+    const L = fxLines[i];
+    L.life -= dt * L.decay;
+    if (L.life <= 0) { fxLines.splice(i, 1); continue; }
+    ctx.save(); L.draw(ctx); ctx.restore();
+  }
+  // 暗角（边缘淡墨晕，缓存渐变）
+  if (!frame._vig) {
+    const vg = ctx.createRadialGradient(W / 2, H / 2, H * .42, W / 2, H / 2, H * .82);
+    vg.addColorStop(0, "rgba(43,38,32,0)"); vg.addColorStop(1, "rgba(43,38,32,.16)");
+    frame._vig = vg;
+  }
+  ctx.fillStyle = frame._vig; ctx.fillRect(0, 0, W, H);
   // 飘字
   for (let i = floaters.length - 1; i >= 0; i--) {
     const f = floaters[i];
@@ -2043,6 +2284,15 @@ function frame(now) {
     ctx.font = `${f.size}px "Songti SC","SimSun",serif`;
     ctx.fillStyle = f.col; ctx.textAlign = "center";
     ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+  // 妖潮推进度（wave 阶段顶部细线）
+  if (g.phase === "wave" && g.waveTotal > 0) {
+    const done = g.waveTotal - g.buildQueue.length - g.enemies.length;
+    const ratio = Math.max(0, Math.min(1, done / g.waveTotal));
+    ctx.save();
+    ctx.fillStyle = "rgba(43,38,32,.14)"; ctx.fillRect(W / 2 - 130, 14, 260, 2.6);
+    ctx.fillStyle = "rgba(158,43,37,.75)"; ctx.fillRect(W / 2 - 130, 14, 260 * ratio, 2.6);
     ctx.restore();
   }
   // 右下守山印
