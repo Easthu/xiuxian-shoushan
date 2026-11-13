@@ -640,6 +640,7 @@ const R3D = (() => {
 
   // ---------- 溪流（右缘波光带 + 闪点） ----------
   const streamGlints = [];
+  let streamWater = null;
   (function buildStream() {
     const pts = [];
     for (let i = 0; i <= 30; i++) {
@@ -655,9 +656,29 @@ const R3D = (() => {
       if (i < N) { const b = i * 2; idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
     }
     const geo = new THREE.BufferGeometry();
+    const uvArr = [];
+    for (let i = 0; i <= N; i++) uvArr.push(i / N * 6, 0, i / N * 6, 1);
     geo.setAttribute("position", new THREE.Float32BufferAttribute(posArr, 3));
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvArr, 2));
     geo.setIndex(idx);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x3d6b6b, transparent: true, opacity: .5, depthWrite: false });
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { uT: { value: 0 } },
+      vertexShader: "varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }",
+      fragmentShader: `uniform float uT; varying vec2 vUv;
+        void main(){
+          float w1 = sin(vUv.x*42.0 + uT*2.2 + sin(vUv.y*26.0 + uT*.7)*1.6);
+          float w2 = sin(vUv.x*19.0 - uT*1.4 + vUv.y*8.0);
+          float spec = pow(max(0.0, w1*.5+.5), 10.0)*.55 + pow(max(0.0, w2*.5+.5), 16.0)*.35;
+          vec3 deep = vec3(.16,.30,.31), shal = vec3(.36,.55,.54);
+          vec3 col = mix(deep, shal, vUv.y*.25 + .35);
+          col += spec*vec3(.85,1.0,.95)*.75;                 // 波光
+          float edge = smoothstep(0.0,.25,vUv.y)*(1.0-smoothstep(.75,1.0,vUv.y));
+          col += (1.0-edge)*vec3(.35,.5,.48)*.4;             // 岸缘湿边
+          gl_FragColor = vec4(col, .88);
+        }`,
+    });
+    streamWater = mat;
     scene.add(new THREE.Mesh(geo, mat));
     // streamGlints 已提升至 IIFE 顶层
     const dotGeo = new THREE.CircleGeometry(2.2, 6); dotGeo.rotateX(-Math.PI / 2);
@@ -1040,6 +1061,24 @@ const R3D = (() => {
     gateLamps = lampMats;
   })();
 
+  // ---------- 星空（高空淡金星点，随风微闪） ----------
+  let starField = null;
+  (function buildStars() {
+    const N = 160, pos = [], ph = [];
+    for (let i = 0; i < N; i++) {
+      const a2 = Math.random() * Math.PI * 2, rr = 900 + Math.random() * 700;
+      pos.push(480 + Math.cos(a2) * rr, 320 + Math.random() * 260, 300 + Math.sin(a2) * rr);
+      ph.push(Math.random() * 10);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    const m = new THREE.PointsMaterial({ color: 0xd8c890, size: 2.6, transparent: true, opacity: .5, sizeAttenuation: true, fog: false });
+    const pts2 = new THREE.Points(g, m);
+    pts2.userData.ph = ph;
+    scene.add(pts2);
+    starField = pts2;
+  })();
+
   // ---------- 出怪传送门（妖兽从漩涡钻出） ----------
   let portal = null;
   (function buildPortal() {
@@ -1084,6 +1123,7 @@ const R3D = (() => {
       if (fade.t >= 2) clearInterval(iv);
     }, 50);
   }
+
 
   // ---------- 出怪传送门（妖兽从漩涡钻出） ----------
   const matInkBase = new THREE.MeshStandardMaterial({ color: 0x1e1a15, roughness: .95, metalness: 0 });
@@ -1564,6 +1604,8 @@ const R3D = (() => {
     stepPetals(dt, time);
     stepFogBands(dt, time);
     if (grassWind) grassWind.value = time;
+    if (streamWater) streamWater.uniforms.uT.value = time;
+    if (starField) starField.material.opacity = .35 + Math.abs(Math.sin(time * .9)) * .25;
   }
   const towerMeshes = new Map();
 
@@ -1619,6 +1661,7 @@ function floatText3D(x, z, text, col, size, yOff) {
   floaters.push({ el, life: 1 });
 }
 let floaters = [];
+let comboN = 0, comboLast = 0;
 function stepFloaters(dt) {
   for (let i = floaters.length - 1; i >= 0; i--) {
     const f = floaters[i];
@@ -1666,9 +1709,15 @@ function fxEvents(evs) {
         burstHit3D(ev.x, ev.y, ev.ele);
         if (ev.crit) { floatText3D(ev.x, ev.y, "暴 " + ev.dmg, "#9e2b25", 15); R3D.emit(ev.x, 12, ev.y, { r: 6, col: 0x9e2b25, decay: 3 }); }
         break;
-      case "kill":
+      case "kill": {
         burstKill3D(ev.x, ev.y, ev.big);
-        deathStain(ev.x, ev.y, ev.big);
+        R3D.deathStain(ev.x, ev.y, ev.big);
+        const now2 = performance.now();
+        if (now2 - comboLast < 2000) comboN++; else comboN = 1;
+        comboLast = now2;
+        if (comboN >= 3) floatText3D(ev.x, ev.y - 24, comboN + " 连斩！", "#c4362a", 16, 20);
+        break;
+      }
         if (ev.big) { R3D.flashLight(ev.x, 24, ev.y, 0x9a5ad8, 5, 380, 1.6); R3D.pillarFX(ev.x, ev.y, 0x9a5ad8); shake = Math.max(shake, 10); }
         AudioFX.kill();
         floatText3D(ev.x, ev.y, "+" + ev.bounty, "#8a6d1e", 12);
@@ -2093,6 +2142,7 @@ window.addEventListener("keydown", e => {
 /* ---------------- 主循环 ---------------- */
 let last = performance.now();
 let idleT = 0;
+let fpsAcc = 0, fpsN = 0, degraded = false;
 window.addEventListener("pointerdown", () => { idleT = 0; });
 window.addEventListener("wheel", () => { idleT = 0; });
 window.addEventListener("keydown", () => { idleT = 0; });
@@ -2102,6 +2152,17 @@ function frame(now) {
   let dt = Math.min(.05, (now - last) / 1000);
   last = now;
   idleT += dt;
+  // 自动降级：帧率不足时降画质（一次性）
+  fpsAcc += dt; fpsN++;
+  if (fpsN >= 60) {
+    const fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
+    if (fps < 28 && !degraded) {
+      degraded = true;
+      R3D.renderer.setPixelRatio(1);
+      R3D.POST.enabled = false;
+      toast("画面自动降级以保证流畅");
+    }
+  }
   const time = now / 1000;
   const steps = speed;
   for (let i = 0; i < steps; i++) {
