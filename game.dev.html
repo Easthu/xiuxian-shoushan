@@ -221,6 +221,7 @@ let codexSaved = JSON.parse(localStorage.getItem(C.SAVE_KEY) || "null");
 /* ================= R3D · three.js 水墨 3D 渲染层 ================= */
 const R3D = (() => {
   const INK = 0x2b2620, PAPER = 0xe8e0ce, RED = 0x9e2b25, CYAN = 0x3d6b6b, GOLD = 0xa8842c, GREEN = 0x5a6b3d, PURPLE = 0x5d3d6b;
+  const R01 = i => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
   const cv = document.getElementById("cv");
   const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -259,10 +260,16 @@ const R3D = (() => {
       { t: { value: null }, dir: { value: new THREE.Vector2() } });
     const mComposite = mkMat(
       "uniform sampler2D scene; uniform sampler2D bloom; uniform float time; varying vec2 vUv;" +
-      "void main(){ vec3 c=texture2D(scene,vUv).rgb; vec3 bl=texture2D(bloom,vUv).rgb; c+=bl*.66;" +
-      "vec2 d=vUv-.5; c*=1.0-dot(d,d)*.55;" +
-      "float g=fract(sin(dot(vUv*vec2(1234.5,6789.1)+time,vec2(12.9898,78.233)))*43758.5453); c+=(g-.5)*.022;" +
-      "gl_FragColor=vec4(c,1.); }",
+      "void main(){" +
+      " vec2 d=vUv-.5; float r2=dot(d,d);" +
+      " vec3 c=texture2D(scene,vUv).rgb;" +
+      " c.r=texture2D(scene,vUv+d*r2*.010).r; c.b=texture2D(scene,vUv-d*r2*.010).b;" +
+      " vec3 bl=texture2D(bloom,vUv).rgb; c+=bl*.66;" +
+      " float lum=dot(c,vec3(.2126,.7152,.0722));" +
+      " c*=mix(vec3(.93,1.0,1.08),vec3(1.07,1.0,.87),smoothstep(.22,.8,lum));" +
+      " c*=1.0-r2*.55;" +
+      " float g=fract(sin(dot(vUv*vec2(1234.5,6789.1)+time,vec2(12.9898,78.233)))*43758.5453); c+=(g-.5)*.022;" +
+      " gl_FragColor=vec4(c,1.); }",
       { scene: { value: null }, bloom: { value: null }, time: { value: 0 } });
     let enabled = true;
     function render(scene, camera, time) {
@@ -715,7 +722,6 @@ const R3D = (() => {
   (function buildDecor() {
     const pineMat = new THREE.MeshStandardMaterial({ color: 0x39402f, roughness: .95 });
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: .95 });
-    const R01 = i => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
     // 松（弯角旁）
     for (let i = 1; i < C.PATH.length - 1; i++) {
       const a = C.PATH[i];
@@ -808,6 +814,89 @@ const R3D = (() => {
     }
   })();
 
+  // ---------- 幡旗（弯角斩妖/伏魔幡，cloth 顶点波动） ----------
+  const banners = [];
+  (function buildBanners() {
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a3128, roughness: .95 });
+    const words = ["斩妖", "伏魔", "守山", "镇邪"];
+    let bi = 0;
+    for (let i = 1; i < C.PATH.length - 1; i += 2) {
+      const p = C.PATH[i];
+      const n = C.pathNormal(0);
+      const x = p[0] + (R01(bi * 3 + 1) - .5) * 120, z = p[1] + (R01(bi * 5 + 2) - .5) * 100;
+      if (C.pathDistTo(x, z) < 40) continue;
+      const word = words[bi % words.length];
+      // 幡面纹理
+      const bc = document.createElement("canvas"); bc.width = 64; bc.height = 192;
+      const bg2 = bc.getContext("2d");
+      bg2.fillStyle = bi % 2 ? "#9e2b25" : "#3d6b6b";
+      bg2.fillRect(0, 0, 64, 192);
+      bg2.strokeStyle = "rgba(232,224,206,.6)"; bg2.lineWidth = 3;
+      bg2.strokeRect(4, 4, 56, 184);
+      bg2.fillStyle = "#e8c96a";
+      bg2.font = "bold 26px 'Songti SC','SimSun',serif";
+      bg2.textAlign = "center";
+      bg2.shadowColor = "rgba(0,0,0,.5)"; bg2.shadowBlur = 4;
+      bg2.fillText(word[0], 32, 58);
+      bg2.fillText(word[1], 32, 118);
+      bg2.shadowBlur = 0;
+      bg2.fillStyle = "rgba(232,224,206,.5)";
+      for (let s = 0; s < 3; s++) bg2.fillRect(12, 150 + s * 12, 40, 3);
+      const tex = new THREE.CanvasTexture(bc);
+      // 杆
+      const grp = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.9, 1.2, 44, 10), poleMat);
+      pole.position.y = 22; pole.castShadow = true; grp.add(pole);
+      const finial = new THREE.Mesh(new THREE.SphereGeometry(1.6, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xa8842c, metalness: .8, roughness: .3, envMapIntensity: 1.4 }));
+      finial.position.y = 45; grp.add(finial);
+      // 幡面（顶点波动 cloth）
+      const flagGeo = new THREE.PlaneGeometry(20, 56, 6, 14);
+      flagGeo.translate(11.4, -28, 0);
+      const flagMat = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: .9 });
+      const uWave = { value: 0 };
+      flagMat.onBeforeCompile = (shader) => {
+        shader.uniforms.uWave = uWave;
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common> uniform float uWave;')
+          .replace('#include <begin_vertex>', `#include <begin_vertex>
+            float wK = position.x / 22.84;
+            transformed.z += sin(uWave * 3.4 + wK * 5.2) * 4.6 * wK * wK;
+            transformed.y += sin(uWave * 2.2 + wK * 3.1) * 1.7 * wK;`);
+      };
+      const flag = new THREE.Mesh(flagGeo, flagMat);
+      flag.position.y = 44;
+      flag.castShadow = true;
+      grp.add(flag);
+      grp.position.set(x, elev(x, z) - .3, z);
+      grp.rotation.y = R01(bi * 7) * Math.PI * 2;
+      grp.userData = { uWave, flag };
+      scene.add(grp);
+      banners.push(grp);
+      bi++;
+    }
+  })();
+
+  // ---------- 香炉（山门旁，烟粒上升） ----------
+  let censerSmoke = null;
+  (function buildCenser() {
+    const gx = C.GATE[0] - 60, gz = C.GATE[1] - 60;
+    const grp = new THREE.Group();
+    const bronze = new THREE.MeshStandardMaterial({ color: 0x6a5d3d, roughness: .55, metalness: .75, envMapIntensity: 1.1 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(8, 20, 16, 0, Math.PI * 2, 0, Math.PI * .62), bronze);
+    body.position.y = 9; body.castShadow = true; grp.add(body);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(7.4, .9, 10, 24), bronze);
+    rim.rotation.x = Math.PI / 2; rim.position.y = 9; grp.add(rim);
+    for (const [lx, lz] of [[-6, 0], [6, 0], [0, 6]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.7, 9, 10), bronze);
+      leg.position.set(lx, 4.5, lz); leg.rotation.z = lx * .05; leg.rotation.x = -lz * .05;
+      leg.castShadow = true; grp.add(leg);
+    }
+    grp.position.set(gx, elev(gx, gz), gz);
+    scene.add(grp);
+    censerSmoke = { x: gx, z: gz };
+  })();
+
   // ---------- 草簇（双面十字片 InstancedMesh） ----------
   let grassWind = null;
   (function buildGrass() {
@@ -891,19 +980,25 @@ const R3D = (() => {
   // ---------- 粒子池（THREE.Points，CPU 更新） ----------
   const PMAX = 2600;
   const pGeo = new THREE.BufferGeometry();
-  const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX);
+  const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX), pAng = new Float32Array(PMAX);
   pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
   pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3));
   pGeo.setAttribute("size", new THREE.BufferAttribute(pSize, 1));
+  pGeo.setAttribute("aAng", new THREE.BufferAttribute(pAng, 1));
   const pMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     uniforms: {},
-    vertexShader: `attribute float size; varying vec3 vColor;
-      void main(){ vColor=color; vec4 mv=modelViewMatrix*vec4(position,1.0);
+    vertexShader: `attribute float size; attribute float aAng; varying vec3 vColor; varying float vAng;
+      void main(){ vColor=color; vAng=aAng; vec4 mv=modelViewMatrix*vec4(position,1.0);
         gl_PointSize=size*(260.0/-mv.z); gl_Position=projectionMatrix*mv; }`,
-    fragmentShader: `varying vec3 vColor;
-      void main(){ vec2 d=gl_PointCoord-vec2(.5); float r=length(d);
-        float a=smoothstep(.5,.08,r); gl_FragColor=vec4(vColor,a); }`,
+    fragmentShader: `varying vec3 vColor; varying float vAng;
+      void main(){
+        vec2 c=gl_PointCoord-.5;
+        float cs=cos(vAng), sn=sin(vAng);
+        vec2 d=vec2(c.x*cs-c.y*sn, c.x*sn+c.y*cs);
+        d.x*=.62; // 墨滴沿运动方向拉伸
+        float r=length(d);
+        float a=smoothstep(.5,.06,r); gl_FragColor=vec4(vColor,a); }`,
     vertexColors: true
   });
   const points = new THREE.Points(pGeo, pMat);
@@ -915,6 +1010,7 @@ const R3D = (() => {
     const i = pHead; pHead = (pHead + 1) % PMAX;
     pPos[i * 3] = x; pPos[i * 3 + 1] = y; pPos[i * 3 + 2] = z;
     pVel[i * 3] = o.vx || 0; pVel[i * 3 + 1] = o.vy || 0; pVel[i * 3 + 2] = o.vz || 0;
+    pAng[i] = Math.atan2(o.vy || 0, o.vx || 0);
     const c = new THREE.Color(o.col == null ? 0x2b2620 : o.col);
     pCol[i * 3] = c.r; pCol[i * 3 + 1] = c.g; pCol[i * 3 + 2] = c.b;
     pLife[i] = o.life || 1; pDecay[i] = o.decay || 1.6; pGrav[i] = o.grav || 0; pSizeV[i] = o.r || 2;
@@ -932,6 +1028,7 @@ const R3D = (() => {
     pGeo.attributes.position.needsUpdate = true;
     pGeo.attributes.color.needsUpdate = true;
     pGeo.attributes.size.needsUpdate = true;
+    pGeo.attributes.aAng.needsUpdate = true;
   }
 
   // ---------- 闪电池 ----------
@@ -1606,6 +1703,11 @@ const R3D = (() => {
     if (grassWind) grassWind.value = time;
     if (streamWater) streamWater.uniforms.uT.value = time;
     if (starField) starField.material.opacity = .35 + Math.abs(Math.sin(time * .9)) * .25;
+    for (const bn of banners) bn.userData.uWave.value = time;
+    if (censerSmoke && Math.random() < .3) {
+      emit(censerSmoke.x + (Math.random() - .5) * 6, 20, censerSmoke.z + (Math.random() - .5) * 6,
+        { vy: 18 + Math.random() * 14, vx: (Math.random() - .5) * 8, r: 2.8, col: 0x8a8578, decay: .55, life: 2.2 });
+    }
   }
   const towerMeshes = new Map();
 
