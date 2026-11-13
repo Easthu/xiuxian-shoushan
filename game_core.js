@@ -105,6 +105,94 @@
   };
   const BASE_KEYS = Object.keys(TOWERS);
 
+  // ---------- 融合阵表（游戏灵魂；recipe 无序对，zhenwu 同种保底，secret 为图鉴暗格） ----------
+  // 机制字段：chain{链数,倍率} dot{灼/毒伤,秒} stun{定身率,秒} onKillQi{击杀加灵气}
+  //           onKillAirQi{空杀伤灵气} qiPerSec{产灵气} —— 引擎通用结算
+  const FUSIONS = {
+    shuangren: { key: "shuangren", name: "霜刃剑阵", recipe: ["yujian", "xuanbing"], costQi: 40,
+      dmg: 18, rate: 0.6, range: 150, ground: true, air: false, proj: "frostSword",
+      slowF: 0.35, slowT: 1.2, chain: { n: 1, mul: 0.5 }, color: PAL.cyan, desc: "寒意附剑，剑气霜弹" },
+    zhuxian: { key: "zhuxian", name: "诛仙剑阵", recipe: ["yujian", "tianlei"], costQi: 60,
+      dmg: 26, rate: 0.7, range: 170, ground: true, air: false, proj: "thunderSword",
+      chain: { n: 3, mul: 0.6 }, pierce: 0.3, color: PAL.red, desc: "连锁雷剑 · 招牌阵" },
+    fenjian: { key: "fenjian", name: "焚天剑阵", recipe: ["yujian", "lieyan"], costQi: 40,
+      dmg: 17, rate: 0.65, range: 145, ground: true, air: false, proj: "fireSword",
+      dot: { dps: 6, dur: 3 }, color: PAL.red, desc: "剑锋燃焰，灼烧不熄" },
+    wanjian: { key: "wanjian", name: "万剑归宗", recipe: ["yujian", "fukong"], costQi: 40,
+      dmg: 16, rate: 0.5, range: 155, ground: true, air: true, proj: "sword",
+      chain: { n: 1, mul: 0.45 }, color: PAL.green, desc: "对空对地，万剑齐发" },
+    liaoyuan: { key: "liaoyuan", name: "燎原雾阵", recipe: ["lieyan", "xuanbing"], costQi: 45,
+      dmg: 10, rate: 1.1, range: 130, ground: true, air: false, proj: "fire",
+      splash: 60, splashMul: 0.6, dot: { dps: 5, dur: 2.5 }, color: PAL.purple, desc: "毒雾燎原，绵绵不绝" },
+    zixiao: { key: "zixiao", name: "紫霄神雷", recipe: ["lieyan", "tianlei"], costQi: 50,
+      dmg: 40, rate: 1.4, range: 160, ground: true, air: false, proj: "fire",
+      splash: 55, splashMul: 0.8, pierce: 0.4, color: PAL.purple, desc: "雷火同源，高伤溅射" },
+    danlu: { key: "danlu", name: "丹炉阵", recipe: ["lieyan", "juling"], costQi: 40,
+      dmg: 12, rate: 0.9, range: 115, ground: true, air: false, proj: "fire",
+      dot: { dps: 8, dur: 2 }, onKillQi: 2, color: PAL.gold, desc: "焚妖炼丹，斩之得灵" },
+    hansuo: { key: "hansuo", name: "寒天锁空", recipe: ["xuanbing", "fukong"], costQi: 45,
+      dmg: 10, rate: 0.9, range: 190, ground: false, air: true, proj: "lock",
+      slowF: 0.5, slowT: 1.6, color: PAL.cyan, desc: "寒锁长空，飞舟滞行" },
+    ningquan: { key: "ningquan", name: "玄冰凝泉", recipe: ["xuanbing", "juling"], costQi: 40,
+      dmg: 8, rate: 1.2, range: 120, ground: true, air: false, proj: "bolt",
+      slowF: 0.3, slowT: 1.0, qiPerSec: 0.35, color: PAL.cyan, desc: "凝泉成灵，缓滞生财" },
+    leifa: { key: "leifa", name: "九天雷罚", recipe: ["tianlei", "fukong"], costQi: 45,
+      dmg: 34, rate: 1.3, range: 200, ground: false, air: true, proj: "none",
+      pierce: 0.3, color: PAL.gold, desc: "九天引罚，诛空中鳞甲" },
+    yinlei: { key: "yinlei", name: "引雷纳灵", recipe: ["tianlei", "juling"], costQi: 45,
+      dmg: 22, rate: 1.0, range: 155, ground: true, air: false, proj: "none",
+      chain: { n: 1, mul: 0.5 }, onKillQi: 1, color: PAL.gold, desc: "雷归丹田，斩妖纳灵" },
+    zhenwu: { key: "zhenwu", name: "真武阵", recipe: null, costQi: 25, secret: false,
+      dmg: 0, rate: 0, range: 0, ground: true, air: true, proj: "sword",
+      color: PAL.ink, desc: "同系归一，纯数强化", dynamic: true }, // 数值由同种融合动态生成
+    // —— 图鉴暗格（表上不写，炼成才点亮） ——
+    linlei: { key: "linlei", name: "凛雷阵", recipe: ["xuanbing", "tianlei"], costQi: 50, secret: true,
+      dmg: 20, rate: 1.0, range: 150, ground: true, air: false, proj: "frostSword",
+      stun: { chance: 0.18, dur: 1.1 }, chain: { n: 1, mul: 0.4 }, color: PAL.cyan, desc: "雷凝冰晶，触之即僵" },
+    lingzhou: { key: "lingzhou", name: "御灵舟坞", recipe: ["fukong", "juling"], costQi: 45, secret: true,
+      dmg: 14, rate: 0.7, range: 170, ground: false, air: true, proj: "lock",
+      qiPerSec: 0.25, onKillAirQi: 3, color: PAL.green, desc: "御空纳灵，斩舟倍献" },
+    fenkong: { key: "fenkong", name: "焚空阵", recipe: ["lieyan", "fukong"], costQi: 45, secret: true,
+      dmg: 15, rate: 0.75, range: 165, ground: false, air: true, proj: "fire",
+      dot: { dps: 7, dur: 2.5 }, color: PAL.red, desc: "焚符射空，灼烧飞鳞" },
+    jianxin: { key: "jianxin", name: "剑心通明", recipe: ["yujian", "juling"], costQi: 40, secret: true,
+      dmg: 14, rate: 0.55, range: 140, ground: true, air: false, proj: "sword",
+      qiPerSec: 0.3, color: PAL.gold, desc: "心剑合一，御剑生灵" },
+  };
+  // 无序配方索引
+  const FUSE_INDEX = {};
+  for (const k of Object.keys(FUSIONS)) {
+    const F = FUSIONS[k];
+    if (!F.recipe) continue;
+    FUSE_INDEX[[...F.recipe].sort().join("|")] = k;
+  }
+  // 融合阵升级费用（灵石）：按灵气配方折算，2/3 级递增（与基础阵的经济曲线衔接）
+  for (const k of Object.keys(FUSIONS)) {
+    const F = FUSIONS[k];
+    if (!F.dynamic) F.up = [0, Math.round(F.costQi * 3), Math.round(F.costQi * 5.2)];
+  }
+  // 查配方：同种→真武阵（动态数值），无匹配→null
+  function getFusion(a, b) {
+    if (a === b) {
+      const T = TOWERS[a];
+      return {
+        ...FUSIONS.zhenwu,
+        key: "zhenwu_" + a,
+        name: "真武阵·" + T.name.slice(0, 2),
+        ele: T.ele, color: T.color, costQi: 25,
+        dmg: T.dmg * 2.2, rate: T.rate, range: T.range + 30,
+        ground: T.ground, air: T.air, proj: T.proj,
+        splash: T.splash, splashMul: T.splashMul,
+        slowF: T.slowF, slowT: T.slowT, pierce: T.pierce, qiRate: T.qiRate,
+        up: [0, Math.round(25 * 1.5 * 2), Math.round(25 * 2.6 * 2)], desc: FUSIONS.zhenwu.desc,
+      };
+    }
+    const k = FUSE_INDEX[[a, b].sort().join("|")];
+    if (!k) return null;
+    return FUSIONS[k];
+  }
+  const CODEX_ALL = Object.keys(FUSIONS); // 16 格（zhenwu 为代表格）
+
   // ---------- 妖兽表（每种惩罚一种偷懒布阵） ----------
   const FOES = {
     grunt:  { key: "grunt",  name: "妖兽小兵", hp: 32,  spd: 40, bounty: 6,  armor: 0,    leak: 1, r: 10, fly: false, regen: 0,    desc: "基础妖杂" },
@@ -183,6 +271,7 @@
       spentTotal: 0,
       rng: mulberry32(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0),
       endless: false,        // 里程碑8
+      codex: {},             // 融合图鉴：{ [fusionKey]: waveN }，炼成才点亮
       stats: { goldEarned: 0 },
       nextFoeId: 1,
     };
@@ -195,7 +284,7 @@
       return { ok: false, why: "出界" };
     if (pathDistTo(x, y) < 30) return { ok: false, why: "距山道过近" };
     for (const t of g.towers) {
-      if (Math.hypot(t.x - x, t.y - y) < TOWER_R * 2 + 4) return { ok: false, why: "与阵法重叠" };
+      if (Math.hypot(t.x - x, t.y - y) < radiusOf(t) + TOWER_R + 4) return { ok: false, why: "与阵法重叠" };
     }
     const T = TOWERS[typeKey];
     if (!T) return { ok: false, why: "未知阵法" };
@@ -230,7 +319,7 @@
       spd: F.spd * (opts.spdMul != null ? opts.spdMul : 1),
       d: opts.d || 0, armor: F.armor, fly: F.fly, regen: F.regen,
       bounty: F.bounty, leakDamage: F.leak, r: F.r,
-      slowT: 0, slowF: 0, burnDps: 0, burnT: 0,
+      slowT: 0, slowF: 0, burnDps: 0, burnT: 0, stunT: 0,
       dead: false, leaked: false, hitT: 0,
       wob: g.rng() * Math.PI * 2, // 步态相位
     };
@@ -275,9 +364,20 @@
     return { n: w.n, parts, bonus: w.bonus };
   }
 
+  // ---------- 阵法属性统一访问器（基础/融合一视同仁） ----------
+  function stats(t) { return TOWERS[t.type] || FUSIONS_BY_KEY(t.type) || null; }
+  function FUSIONS_BY_KEY(k) {
+    if (!k.startsWith("zhenwu_")) return FUSIONS[k] || null;
+    // 真武阵动态：还原母阵
+    const base = k.slice(7);
+    return getFusion(base, base);
+  }
+  function radiusOf(t) { return t.kind === "fusion" ? 30 : TOWER_R; }
+
   // ---------- 索敌（skill：默认 first = 路径进度优先） ----------
   function acquire(t, g) {
-    const T = TOWERS[t.type] || FUSION_TOWER_STATS(t);
+    const T = stats(t);
+    if (!T) return null;
     let best = null, score = -Infinity;
     for (const e of g.enemies) {
       if (e.dead) continue;
@@ -298,7 +398,7 @@
     return best;
   }
   function towerRange(t) {
-    const T = TOWERS[t.type];
+    const T = stats(t);
     if (T) return T.range + (t.lvl - 1) * 10 + (t.rangeBonus || 0);
     return 0;
   }
@@ -307,8 +407,8 @@
   function upgradeTower(g, id) {
     const t = g.towers.find(x => x.id === id);
     if (!t || t.lvl >= 3) return { ok: false, why: "已达三级" };
-    const T = TOWERS[t.type];
-    if (!T) return { ok: false, why: "融合阵不可升" };
+    const T = stats(t);
+    if (!T) return { ok: false, why: "未知阵法" };
     const cost = T.up[t.lvl];
     if (g.gold < cost) return { ok: false, why: "灵石不足" };
     g.gold -= cost; t.spent += cost; t.lvl++;
@@ -329,6 +429,56 @@
     t.mode = mode;
     return true;
   }
+
+  // ---------- 阵法融合（里程碑4 · 游戏灵魂） ----------
+  const FUSE_DIST = TOWER_R * 3; // 相邻阈值：两阵圆心 ≤ 51px（禁重叠 38px 之上留出宽松环带，拖拽手感友好）
+  function canFuse(g, idA, idB) {
+    const a = g.towers.find(x => x.id === idA), b = g.towers.find(x => x.id === idB);
+    if (!a || !b || a === b) return { ok: false, why: "无效目标" };
+    if (a.kind === "fusion" || b.kind === "fusion") return { ok: false, why: "融合阵不可再融合" };
+    if (Math.hypot(a.x - b.x, a.y - b.y) > FUSE_DIST) return { ok: false, why: "两阵不相邻" };
+    const F = getFusion(a.type, b.type);
+    if (!F) return { ok: false, why: "无此配方" };
+    if (g.qi < F.costQi) return { ok: false, why: "灵气不足", need: F.costQi, have: Math.floor(g.qi) };
+    return { ok: true, fusion: F };
+  }
+  // 拖 A 到 B 上 → A 为体（保留位置），B 化入；等级继承=max，投入折算 70% 入灵气
+  function fuseTowers(g, idA, idB) {
+    const chk = canFuse(g, idA, idB);
+    if (!chk.ok) return chk;
+    const a = g.towers.find(x => x.id === idA), b = g.towers.find(x => x.id === idB);
+    const F = chk.fusion;
+    g.qi -= F.costQi;
+    const lvl = Math.max(a.lvl, b.lvl);
+    const spent = a.spent + b.spent;
+    // 移除 B
+    const bi = g.towers.indexOf(b);
+    g.towers.splice(bi, 1);
+    // A 原地化融合阵
+    a.kind = "fusion";
+    a.type = F.key.startsWith("zhenwu") ? "zhenwu_" + a.type : F.key;
+    a.name = F.name;
+    a.lvl = lvl;
+    a.spent = spent;
+    a.fuseOf = [a.type === F.key ? F.recipe : null, b.type].filter(Boolean);
+    a.fuseRecipe = chk.fusion.recipe || [b.type, b.type]; // 记录配方（真武为同种对）
+    a.cd = 0;
+    a.color = F.color;
+    a.spin = g.rng() * Math.PI * 2;
+    // 图鉴点亮（真武统一记 zhenwu 格）
+    const codexKey = F.key === "zhenwu" || F.dynamic ? "zhenwu" : F.key;
+    const isNew = !(codexKey in g.codex);
+    if (isNew) g.codex[codexKey] = g.wave + 1;
+    g.events.push({ t: "fuse", x: a.x, y: a.y, name: F.name, isNew, codexKey, color: F.color });
+    return { ok: true, fusion: F, isNew, codexKey };
+  }
+  // 图鉴全集（渲染 UI 用；真武 1 格代表）
+  function codexList() {
+    return Object.keys(FUSIONS).map(k => {
+      const F = FUSIONS[k];
+      return { key: k, name: F.name, desc: F.desc, secret: !!F.secret, recipe: F.recipe, color: F.color, costQi: F.costQi };
+    });
+  }
   // 融合阵的战斗属性（里程碑4启用；这里先给占位，避免 acquire 崩）
   function FUSION_TOWER_STATS(t) { return { ground: false, air: false }; }
 
@@ -346,14 +496,22 @@
     e.hp -= eff;
     e.hitT = 0.18; // 受击白闪
     g.events.push({ t: "hit", x: foePos(g, e)[0], y: foePos(g, e)[1], dmg: Math.round(eff), eid: e.id, ele: opts.ele || "metal" });
-    if (e.hp <= 0) {
-      e.dead = true;
-      const b = bountyOf(e, g.wave + 1);
-      g.gold += b; g.stats.goldEarned += b;
-      g.qi += 1; g.kills++;
-      g.events.push({ t: "kill", x: foePos(g, e)[0], y: foePos(g, e)[1], bounty: b, eid: e.id, big: e.type === "boss" });
-    }
+    if (e.hp <= 0) killEnemy(g, e, opts.tw, opts.ele);
     return eff;
+  }
+  // 击杀结算（直伤/DoT 共用；tw=来源阵法，融合阵吃 onKillQi 类词条）
+  function killEnemy(g, e, tw, ele) {
+    if (e.dead) return;
+    e.dead = true;
+    const b = bountyOf(e, g.wave + 1);
+    g.gold += b; g.stats.goldEarned += b;
+    g.qi += 1; g.kills++;
+    if (tw) {
+      const T = stats(tw);
+      if (T && T.onKillQi) g.qi += T.onKillQi;
+      if (T && T.onKillAirQi && e.fly) g.qi += T.onKillAirQi;
+    }
+    g.events.push({ t: "kill", x: foePos(g, e)[0], y: foePos(g, e)[1], bounty: b, eid: e.id, big: e.type === "boss", qi: 1 + ((tw && stats(tw) && stats(tw).onKillQi) || 0) });
   }
 
   // ---------- 主步 ----------
@@ -380,21 +538,22 @@
     // --- 妖兽行进 ---
     for (const e of g.enemies) {
       if (e.dead) continue;
-      // 减速衰减
+      // 减速/定身衰减
       if (e.slowT > 0) e.slowT -= dt;
+      if (e.stunT > 0) e.stunT -= dt;
       // 燃烧 DoT（里程碑4/5 机制，字段先通）
       if (e.burnT > 0) {
         e.burnT -= dt;
         e.hp -= e.burnDps * dt;
         if (g.clock % 0.2 < dt) g.events.push({ t: "burn", x: foePos(g, e)[0], y: foePos(g, e)[1] });
-        if (e.hp <= 0) { killByDot(g, e); continue; }
+        if (e.hp <= 0) { killEnemy(g, e, e.dotTw, "fire"); continue; }
       }
       // 回血（再生木妖）
       if (e.regen > 0 && e.hp < e.maxhp) e.hp = Math.min(e.maxhp, e.hp + e.maxhp * e.regen * dt);
       // 受击闪衰减
       if (e.hitT > 0) e.hitT -= dt;
-      // 移动（携带剩余距离天然满足；快慢速同帧推进）
-      const mul = e.slowT > 0 ? (1 - e.slowF) : 1;
+      // 移动（携带剩余距离天然满足；快慢速同帧推进；定身冻结）
+      const mul = e.stunT > 0 ? 0 : (e.slowT > 0 ? (1 - e.slowF) : 1);
       if (e.fly) {
         e.flyT += (e.spd * mul * dt) / FLY_LEN;
         if (e.flyT >= 1) { leak(g, e); continue; }
@@ -408,10 +567,12 @@
     // --- 塔攻击 ---
     for (const t of g.towers) {
       t.spin += dt;
-      const T = TOWERS[t.type];
-      if (!T) continue; // 融合阵里程碑4
-      // 聚灵：产灵气
-      if (T.qiRate) { g.qi += T.qiRate * dt * (1 + (t.lvl - 1) * 0.5); continue; }
+      const T = stats(t);
+      if (!T) continue;
+      // 产灵气（聚灵/凝泉/舟坞/剑心）
+      const qRate = (T.qiRate || T.qiPerSec || 0);
+      if (qRate) g.qi += qRate * dt * (1 + (t.lvl - 1) * 0.5);
+      if (!T.rate || T.rate <= 0) continue; // 纯产灵阵不攻击
       if (t.cd > 0) { t.cd -= dt; continue; }
       const target = acquire(t, g);
       if (!target) continue;
@@ -419,17 +580,22 @@
       t.angle = Math.atan2(ty - t.y, tx - t.x);
       const dmg = towerDmg(t);
       t.cd = T.rate * Math.pow(0.92, t.lvl - 1);
+      const common = {
+        chain: T.chain || null, dot: T.dot || null, stun: T.stun || null,
+        onKillQi: T.onKillQi || 0, onKillAirQi: T.onKillAirQi || 0,
+        splash: T.splash || 0, splashMul: T.splashMul || 0.7,
+        pierce: T.pierce || 0, slowF: T.slowF || 0, slowT: T.slowT || 0,
+        ele: T.ele, srcId: t.id, born: g.clock, tw: t,
+      };
       if (T.proj === "none") {
-        // 天雷：即时命中
-        hitEnemy(g, target, dmg, { pierce: T.pierce, ele: "thunder" });
+        // 即时雷击（天雷/雷罚/引雷）
+        hitEnemy(g, target, dmg, { pierce: T.pierce || 0, ele: "thunder", tw: t });
+        procChain(g, tx, ty, dmg, T.chain, T.pierce || 0, target.id);
         g.events.push({ t: "bolt", x: t.x, y: t.y, tx, ty });
       } else {
         g.projectiles.push({
           id: nid(), kind: T.proj, x: t.x, y: t.y, tx, ty,
-          targetId: target.id, spd: 500, dmg,
-          splash: T.splash || 0, splashMul: T.splashMul || 0.7,
-          pierce: T.pierce || 0, slowF: T.slowF || 0, slowT: T.slowT || 0,
-          ele: T.ele, srcId: t.id, born: g.clock,
+          targetId: target.id, spd: 500, dmg, ...common,
         });
         g.events.push({ t: "shot", x: t.x, y: t.y, tx, ty, kind: T.proj });
       }
@@ -445,20 +611,29 @@
       const step = p.spd * dt;
       if (L <= step) {
         p.done = true;
-        // 命中
+        const opts = { pierce: p.pierce, ele: p.ele, tw: p.tw };
         if (p.splash) {
-          // AoE：落点溅射（对地面）
+          // AoE：落点溅射（主目标全额，其余溅射；附带 DoT/减速/定身）
           for (const e of g.enemies) {
             if (e.dead || e.fly) continue;
             const [ex, ey] = foePos(g, e);
-            if (Math.hypot(ex - p.tx, ey - p.ty) <= p.splash) hitEnemy(g, e, p.dmg * (e.id === p.targetId ? 1 : p.splashMul), { pierce: p.pierce, ele: p.ele });
+            if (Math.hypot(ex - p.tx, ey - p.ty) <= p.splash) {
+              hitEnemy(g, e, p.dmg * (e.id === p.targetId ? 1 : p.splashMul), opts);
+              applyDot(e, p.dot, p.tw);
+              if (p.slowF) { e.slowF = Math.max(e.slowT > 0 ? e.slowF : 0, p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
+              procStun(g, e, p.stun);
+            }
           }
           g.events.push({ t: "boom", x: p.tx, y: p.ty, r: p.splash, ele: p.ele });
+          procChain(g, p.tx, p.ty, p.dmg, p.chain, p.pierce, p.targetId);
         } else {
           const e = tgt;
           if (e) {
-            hitEnemy(g, e, p.dmg, { pierce: p.pierce, ele: p.ele });
-            if (p.slowF) { e.slowF = Math.max(e.slowF * (e.slowT > 0 ? 1 : 0), p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
+            hitEnemy(g, e, p.dmg, opts);
+            applyDot(e, p.dot, p.tw);
+            if (p.slowF) { e.slowF = Math.max(e.slowT > 0 ? e.slowF : 0, p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
+            procStun(g, e, p.stun);
+            procChain(g, p.tx, p.ty, p.dmg, p.chain, p.pierce, e.id);
           } else {
             g.events.push({ t: "whiff", x: p.tx, y: p.ty });
           }
@@ -484,13 +659,6 @@
     return g.events;
   }
 
-  function killByDot(g, e) {
-    e.dead = true;
-    const b = bountyOf(e, g.wave + 1);
-    g.gold += b; g.stats.goldEarned += b;
-    g.qi += 1; g.kills++;
-    g.events.push({ t: "kill", x: foePos(g, e)[0], y: foePos(g, e)[1], bounty: b, eid: e.id, big: e.type === "boss" });
-  }
   function leak(g, e) {
     e.leaked = true;
     g.lives -= e.leakDamage; g.leaked++;
@@ -500,9 +668,41 @@
 
   // 升级伤害/速度
   function towerDmg(t) {
-    const T = TOWERS[t.type];
+    const T = stats(t);
     if (!T) return 0;
     return T.dmg * Math.pow(1.45, t.lvl - 1);
+  }
+
+  // ---------- 特殊机制结算（融合阵） ----------
+  function applyDot(e, dot, tw) {
+    if (!dot) return;
+    e.burnDps = Math.max(e.burnDps, dot.dps);
+    e.burnT = Math.max(e.burnT, dot.dur);
+    if (tw) e.dotTw = tw;
+  }
+  function procStun(g, e, stun) {
+    if (!stun) return;
+    if (g.rng() < stun.chance) { e.stunT = Math.max(e.stunT, stun.dur); g.events.push({ t: "stun", x: foePos(g, e)[0], y: foePos(g, e)[1] }); }
+  }
+  function procChain(g, fromX, fromY, dmg, chain, pierce, excludeId) {
+    if (!chain || chain.n <= 0) return;
+    let cx = fromX, cy = fromY;
+    const hit = new Set([excludeId]);
+    for (let i = 0; i < chain.n; i++) {
+      let best = null, bd = 1e9;
+      for (const e of g.enemies) {
+        if (e.dead || hit.has(e.id)) continue;
+        const [ex, ey] = foePos(g, e);
+        const dd = Math.hypot(ex - cx, ey - cy);
+        if (dd < 130 && dd < bd) { bd = dd; best = e; }
+      }
+      if (!best) break;
+      hit.add(best.id);
+      const [ex, ey] = foePos(g, best);
+      g.events.push({ t: "chain", x: cx, y: cy, tx: ex, ty: ey, ele: "thunder" });
+      hitEnemy(g, best, dmg * chain.mul, { pierce, ele: "thunder" });
+      cx = ex; cy = ey;
+    }
   }
 
   // ---------- 曲线检查导出（td_curve_check.py 的输入格式；1 tile = 20px） ----------
@@ -539,6 +739,7 @@
     createGame, canPlace, placeTower, spawnFoe, startWave, wavePreview, gameStep,
     acquire, towerRange, towerDmg, foePos, hitEnemy, TOWER_R, curveSpec, bountyOf,
     upgradeTower, sellTower, setTargetMode,
+    FUSIONS, getFusion, CODEX_ALL, canFuse, fuseTowers, codexList, radiusOf, FUSE_DIST,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else global.Core = Core;
