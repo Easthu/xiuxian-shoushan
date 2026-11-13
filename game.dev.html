@@ -105,6 +105,13 @@
     </div>
     <div id="wavebar" style="display:none;position:absolute;left:50%;top:20px;transform:translateX(-50%);width:260px;height:3px;background:rgba(43,38,32,.15);z-index:11"><div style="height:100%;width:0;background:rgba(158,43,37,.8)"></div></div>
     <div id="hurtVig" style="position:absolute;inset:0;pointer-events:none;z-index:14;opacity:0;background:radial-gradient(ellipse at center, rgba(158,43,37,0) 46%, rgba(158,43,37,.5) 100%);transition:opacity .18s"></div>
+    <div id="titleSplash" style="position:absolute;inset:0;z-index:30;background:linear-gradient(160deg,#efe8d6,#e2d7c0);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer">
+      <div style="font-size:56px;letter-spacing:26px;color:#2b2620;text-shadow:3px 3px 0 rgba(158,43,37,.3)">修仙守山</div>
+      <div style="font-size:14px;letter-spacing:8px;color:#8a7f68;margin:14px 0 26px">星宗山门 · 妖潮卅波 · 阵法融合 · 渡劫飞升</div>
+      <div style="width:320px;height:1px;background:linear-gradient(90deg,transparent,#9e2b25,transparent);margin-bottom:26px"></div>
+      <button class="seal" style="font-size:20px;padding:12px 40px;letter-spacing:10px">入 山</button>
+      <div style="font-size:11px;color:#8a7f68;margin-top:18px;letter-spacing:2px">左键布阵 · 右键转视角 · 滚轮缩放 · 拖阵融合 · 空格召妖潮</div>
+    </div>
     <div id="countdown" style="display:none;position:absolute;left:50%;top:32px;transform:translateX(-50%);font-size:13px;color:#2b2620;z-index:11;letter-spacing:1px;white-space:nowrap"></div>
     <div class="wlabel" id="wlabel"></div>
     <!-- 前景压墨：JS 程序生成松枝 -->
@@ -1319,7 +1326,28 @@ const R3D = (() => {
         break;
       }
       case "boss": {
-        const body = M(new THREE.SphereGeometry(r, 34, 26)); body.scale.set(1.3, 1, 1.05); body.position.y = r * .95;
+        // 妖王斑纹皮肤（canvas 墨斑）
+        const bskin = document.createElement("canvas"); bskin.width = bskin.height = 128;
+        const bs = bskin.getContext("2d");
+        bs.fillStyle = "#241f19"; bs.fillRect(0, 0, 128, 128);
+        for (let i = 0; i < 40; i++) {
+          bs.strokeStyle = `rgba(10,8,6,${.3 + Math.random() * .4})`;
+          bs.lineWidth = 1 + Math.random() * 2.4;
+          let x = Math.random() * 128, y = Math.random() * 128;
+          bs.beginPath(); bs.moveTo(x, y);
+          for (let s = 0; s < 3; s++) { x += (Math.random() - .5) * 26; y += (Math.random() - .5) * 26; bs.lineTo(x, y); }
+          bs.stroke();
+        }
+        for (let i = 0; i < 18; i++) { // 骨白斑点
+          bs.fillStyle = `rgba(210,200,180,${Math.random() * .22})`;
+          bs.beginPath(); bs.arc(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2.6, 0, 7); bs.fill();
+        }
+        const bTex = new THREE.CanvasTexture(bskin);
+        const bossMat = new THREE.MeshStandardMaterial({ map: bTex, roughness: .92, color: 0xffffff });
+        const body = new THREE.Mesh(new THREE.SphereGeometry(r, 34, 26), bossMat);
+        body.scale.set(1.3, 1, 1.05); body.position.y = r * .95; body.castShadow = true;
+        grp.add(body); mats.push(body);
+        const head = M(new THREE.SphereGeometry(r * .55, 10, 8)); head.position.set(-r * 1.15, r * 1.5, 0);
         // 背部鬃毛棘刺（发光暗红）
         const spikeMat = new THREE.MeshStandardMaterial({ color: 0x6b1f1a, emissive: 0x4a0e08, emissiveIntensity: .9, roughness: .5 });
         for (let i = 0; i < 6; i++) {
@@ -1335,7 +1363,6 @@ const R3D = (() => {
         aura.position.y = r * 1.4;
         grp.add(aura);
         grp.userData.aura = aura;
-        const head = M(new THREE.SphereGeometry(r * .55, 22, 18)); head.position.set(-r * 1.15, r * 1.5, 0);
         for (const s of [-1, 1]) {
           const horn = M(new THREE.ConeGeometry(r * .18, r * 1.3, 14));
           horn.position.set(-r * (s > 0 ? 1.35 : .95), r * 2.2, s * r * .3);
@@ -1893,7 +1920,7 @@ function fxEvents(evs) {
       }
       case "hit":
         burstHit3D(ev.x, ev.y, ev.ele);
-        if (ev.crit) { floatText3D(ev.x, ev.y, "暴 " + ev.dmg, "#9e2b25", 15); R3D.emit(ev.x, 12, ev.y, { r: 6, col: 0x9e2b25, decay: 3 }); }
+        if (ev.crit) { floatText3D(ev.x, ev.y, "暴 " + (ev.dmg != null ? ev.dmg : "!"), "#9e2b25", 15); R3D.emit(ev.x, 12, ev.y, { r: 6, col: 0x9e2b25, decay: 3 }); hitstop = Math.max(hitstop, .05); }
         break;
       case "kill": {
         burstKill3D(ev.x, ev.y, ev.big);
@@ -1909,12 +1936,13 @@ function fxEvents(evs) {
         if (comboN >= 3) floatText3D(ev.x, ev.y - 24, comboN + " 连斩！", "#c4362a", 16, 20);
         break;
       }
-        if (ev.big) { R3D.flashLight(ev.x, 24, ev.y, 0x9a5ad8, 5, 380, 1.6); R3D.pillarFX(ev.x, ev.y, 0x9a5ad8); shake = Math.max(shake, 10); }
+        if (ev.big) { R3D.flashLight(ev.x, 24, ev.y, 0x9a5ad8, 5, 380, 1.6); R3D.pillarFX(ev.x, ev.y, 0x9a5ad8); shake = Math.max(shake, 10); hitstop = .28; }
         AudioFX.kill();
         floatText3D(ev.x, ev.y, "+" + ev.bounty, "#8a6d1e", 12);
         break;
       case "bolt": {
-        AudioFX.thunder();
+        if (!(window._lastThunder && performance.now() - window._lastThunder < 260)) AudioFX.thunder();
+        window._lastThunder = performance.now();
         R3D.boltFX(ev.x, 90, ev.y - 40, ev.tx, 6, ev.ty);
         R3D.flashLight(ev.tx, 40, ev.ty, 0xfff2cc, 5.5, 300, 4.2); // 落雷白金闪
         for (let i = 0; i < 7; i++) {
@@ -2005,6 +2033,20 @@ function fxEvents(evs) {
   }
 }
 
+// 开场遮罩交互
+(function splashInit() {
+  const sp = document.getElementById("titleSplash");
+  if (!sp) return;
+  const enter = () => {
+    AudioFX.ensure();
+    sp.style.transition = "opacity .7s";
+    sp.style.opacity = 0;
+    setTimeout(() => sp.remove(), 720);
+    bigLabel("守 山 卅 波 · 备 战");
+  };
+  sp.addEventListener("pointerdown", enter);
+})();
+
 /* ---------------- 前景压墨（程序生成松枝剪影） ---------------- */
 (function fgPines() {
   function branchSVG(mirror) {
@@ -2082,6 +2124,14 @@ function syncHUD() {
   // BOSS 顶部大血条
   const bh = $("bosshud");
   const bossNow = g.enemies.find(e => e.type === "boss");
+  if (bossNow && window.__bossSeen !== true) {
+    window.__bossSeen = true;
+    bigLabel("妖 王 临 世");
+    shake = Math.max(shake, 9);
+    hitstop = Math.max(hitstop, .5); // 出场慢动作
+    AudioFX.thunder();
+  }
+  if (!bossNow) window.__bossSeen = false;
   if (bossNow) {
     bh.style.display = "block";
     $("bossfill").style.width = (Math.max(0, bossNow.hp / bossNow.maxhp) * 100) + "%";
@@ -2181,7 +2231,7 @@ function showEnd(win) {
   ov.innerHTML = `<div class="sheet" style="text-align:center;min-width:340px">
     <h2>${win ? "山门无恙 · 守山功成" : "气运耗尽 · 山门失守"}</h2>
     <div style="font-size:15px;line-height:2">
-      妖潮第 <b style="color:#9e2b25">${g.wave}</b> 波 ｜ 斩妖 <b style="color:#9e2b25">${g.kills}</b><br>
+      妖潮第 <b style="color:#9e2b25">${g.wave}</b> 波 ｜ 斩妖 <b style="color:#9e2b25">${g.kills}</b> ｜ 输出 <b style="color:#9e2b25">${Math.round(totalDmg)}</b><br>
       图鉴 ${Object.keys(Object.assign({}, (codexSaved && codexSaved.codex) || {}, g.codex)).length}/16 ｜ 无尽纪录 ${(codexSaved && codexSaved.bestWave) || g.wave}
     </div>
     ${endlessBtn}
@@ -2332,7 +2382,13 @@ $("sndBtn").onclick = () => {
   const on = AudioFX.toggle();
   $("sndBtn").textContent = on ? "音·开" : "音·关";
 };
+let paused = false;
 window.addEventListener("keydown", e => {
+  if (e.key === "p" || e.key === "P") {
+    paused = !paused;
+    toast(paused ? "已暂停 · 按 P 继续" : "继续守山");
+  }
+  if (e.key === "h" || e.key === "H") $("codexBtn").click();
   if (e.key === " ") { e.preventDefault(); $("startWaveBtn").click(); }
   if (e.key >= "1" && e.key <= "6") { const k = C.BASE_KEYS[+e.key - 1]; if (k) document.querySelector(`[data-k="${k}"]`).click(); }
   if (e.key === "f" || e.key === "F") $("ff").click();
@@ -2341,6 +2397,7 @@ window.addEventListener("keydown", e => {
 /* ---------------- 主循环 ---------------- */
 let last = performance.now();
 let idleT = 0;
+let hitstop = 0; // 顿帧计时（>0 时逻辑时间减速）
 let fpsAcc = 0, fpsN = 0, degraded = false;
 window.addEventListener("pointerdown", () => { idleT = 0; });
 window.addEventListener("wheel", () => { idleT = 0; });
@@ -2349,7 +2406,9 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (document.hidden) { last = now; return; }
   let dt = Math.min(.05, (now - last) / 1000);
+  if (paused) { last = now; R3D.render(0, now / 1000); syncHUD(); return; }
   last = now;
+  if (hitstop > 0) { hitstop -= dt; dt *= .15; } // 凝滞帧
   idleT += dt;
   // 自动降级：帧率不足时降画质（一次性）
   fpsAcc += dt; fpsN++;
