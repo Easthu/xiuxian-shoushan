@@ -152,21 +152,23 @@ function run() {
     }
     assert(sawChain, '连锁词条让天雷落雷弹跳');
   }
-  // 6f. 定身词条
+  // 6f. 定身词条（固定 seed，确定性验证 8% 概率触发）
   {
-    const g = Core.createGame();
-    const t = put(g, 'yujian', 500);
+    const g = Core.createGame({ seed: 3 });
+    g.gold = 9999;
+    const d = 500; const [px, py] = Core.posAt(d); const n = Core.pathNormal(d);
+    const t = Core.placeTower(g, px + n[0] * 45, py + n[1] * 45, 'yujian');
     t.traits.push('dingshen');
-    // 8% 概率，多打几次必出
-    let sawStun = false, guard = 0;
-    while (!sawStun && guard++ < 40) {
-      const e = Core.spawnFoe(g, 'grunt', { d: Core.PLEN * 0.3, hpMul: 100 });
-      stepUntil(g, () => e.stunT > 0 || e.d > Core.PLEN * 0.3 + 260 || g.clock > 100, 6, 1 / 30);
-      if (e.stunT > 0) sawStun = true;
-      e.dead = true; g.enemies.length = 0; g.towers[0].cd = 0;
+    let stuns = 0;
+    for (let round = 0; round < 5; round++) {
+      const e = C_spawn(g, d);
+      let tt = 0;
+      while (tt < 3) { Core.gameStep(g, 1 / 30); tt += 1 / 30; if (e.stunT > 0) { stuns++; break; } }
+      e.dead = true; g.enemies.length = 0; t.cd = 0;
     }
-    assert(sawStun, '定身词条触发');
+    assert(stuns >= 1, `定身词条触发（${stuns} 次/5 轮）`);
   }
+  function C_spawn(g, d) { return Core.spawnFoe(g, 'grunt', { d, hpMul: 100 }); }
 
   // ---------- 7. 渡劫事件流（渲染特效） ----------
   {

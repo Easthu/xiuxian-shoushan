@@ -243,7 +243,42 @@
   ];
   for (const w of WAVES) { w.hpMul = gw(w.n); w.spdMul = 1 + Math.min(0.5, (w.n - 1) * 0.018); }
 
-  // ---------- 工具 ----------
+  // ---------- 无尽模式（里程碑8）：30 波后动态妖潮 ----------
+  function endlessWave(n) { // n = 全局波次号（>30）
+    const ex = n - 30; // 无尽第几波
+    const hpMul = Math.pow(HP_GROWTH, n);
+    const spdMul = 1.5 + Math.min(0.8, ex * 0.02);
+    const boss = ex % 5 === 0;
+    const G_ = (type, count, spacing) => ({ type, count, spacing });
+    let groups;
+    if (boss) groups = [G_("boss", 1 + Math.floor(ex / 10), 3), G_("scale", 8 + ex, 0.5), G_("boat", 6 + Math.floor(ex / 2), 0.6)];
+    else if (ex % 3 === 1) groups = [G_("wolf", 20 + ex * 2, 0.22), G_("fox", 12 + ex, 0.24)];
+    else if (ex % 3 === 2) groups = [G_("scale", 10 + ex, 0.5), G_("treant", 6 + Math.floor(ex / 2), 0.7), G_("boat", 6 + ex, 0.55)];
+    else groups = [G_("grunt", 18 + ex * 2, 0.3), G_("wolf", 14 + ex, 0.28), G_("fox", 10 + ex, 0.26)];
+    return { n, groups, bonus: 130 + ex * 8, hpMul, spdMul };
+  }
+  function startEndless(g) {
+    if (g.phase !== "win") return false;
+    g.endless = true;
+    g.phase = "build";
+    g.autoT = 20;
+    return true;
+  }
+
+  // ---------- 跨局存档（localStorage 由渲染层读写；core 只做纯数据） ----------
+  const SAVE_KEY = "xiuxian_shoushan_v1";
+  function makeSave(g, extra) {
+    return {
+      ver: 1,
+      bestWave: Math.max((extra && extra.bestWave) || 0, g.wave),
+      codex: Object.assign({}, (extra && extra.codex) || {}, g.codex),           // 图鉴累计（不灭）
+      traitBank: Array.from(new Set([].concat((extra && extra.traitBank) || [], ...g.towers.map(t => t.traits)))), // 词条收藏
+      maxRealm: Math.max((extra && extra.maxRealm) || 0, ...g.towers.map(t => t.realm || 0), 0),
+      updatedAt: Date.now(),
+    };
+  }
+  // 无尽纪录取"打到的最深波次"
+  function recordWave(g) { return g.wave; }
   function mulberry32(seed) {
     let a = seed >>> 0;
     return function () {
@@ -331,7 +366,7 @@
   // ---------- 波次 ----------
   function startWave(g) {
     if (g.phase !== "build") return false;
-    const w = WAVES[g.wave];
+    const w = (g.endless && g.wave >= WAVES.length) ? endlessWave(g.wave + 1) : WAVES[g.wave];
     if (!w) return false;
     // 提前召妖奖励：剩余倒计时折算灵气（奖励自信，不淹没主经济）
     let qiBonus = 0;
@@ -351,9 +386,9 @@
     g.waveBonus = w.bonus;
     return true;
   }
-  // 下一波预告（渲染 UI 用）
+    // 下一波预告（渲染 UI 用）
   function wavePreview(g) {
-    const w = WAVES[g.wave];
+    const w = (g.endless && g.wave >= WAVES.length) ? endlessWave(g.wave + 1) : WAVES[g.wave];
     if (!w) return null;
     const parts = [];
     for (const grp of w.groups) {
@@ -815,6 +850,7 @@
     upgradeTower, sellTower, setTargetMode,
     FUSIONS, getFusion, CODEX_ALL, canFuse, fuseTowers, codexList, radiusOf, FUSE_DIST,
     REALMS, TRIB_FAIL, TRIB_COST, TRAITS, TRAIT_KEYS, attemptTribulation,
+    endlessWave, startEndless, makeSave, recordWave, SAVE_KEY,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else global.Core = Core;
