@@ -714,7 +714,7 @@ const R3D = (() => {
   // ---------- 淡月（球 + 程序辉光 sprite） ----------
   (function buildMoon() {
     const moon = new THREE.Mesh(new THREE.SphereGeometry(17, 40, 30),
-      new THREE.MeshBasicMaterial({ color: 0xd8bc8a, fog: false }));
+      new THREE.MeshBasicMaterial({ color: 0xe2c890, fog: false }));
     moon.position.set(600, 135, 40);
     scene.add(moon);
     const cnv2 = document.createElement("canvas"); cnv2.width = cnv2.height = 128;
@@ -1219,7 +1219,7 @@ const R3D = (() => {
   // ---------- 出怪传送门（妖兽从漩涡钻出） ----------
   let portal = null;
   (function buildPortal() {
-    const px = 26, pz = C.SPAWN[1];
+    const px = 70, pz = C.SPAWN[1];
     const grp = new THREE.Group();
     const ringMat1 = new THREE.MeshStandardMaterial({ color: 0x5d3d6b, emissive: 0x4a2d5d, emissiveIntensity: 1.2, roughness: .4, transparent: true, opacity: .85 });
     const ringMat2 = new THREE.MeshStandardMaterial({ color: 0x8a5ad8, emissive: 0x6a3db8, emissiveIntensity: 1.0, roughness: .4, transparent: true, opacity: .7 });
@@ -1574,6 +1574,25 @@ const R3D = (() => {
     }
   }
 
+  // ---------- 随机流星（夜空划过） ----------
+  const meteors = [];
+  function spawnMeteor() {
+    const x0 = 200 + Math.random() * 700, y0 = 340 + Math.random() * 60;
+    const ang = Math.PI * .78 + Math.random() * .3; // 左下方向
+    meteors.push({ x: x0, y: y0, vx: Math.cos(ang) * 520, vy: -Math.sin(ang) * 520, life: 1 });
+  }
+  function stepMeteors(dt) {
+    if (Math.random() < .0022) spawnMeteor();
+    for (let i = meteors.length - 1; i >= 0; i--) {
+      const m = meteors[i];
+      m.life -= dt * .9;
+      m.x += m.vx * dt; m.y += m.vy * dt;
+      // 尾迹粒子
+      emit(m.x, m.y, 40, { vx: -m.vx * .12, vy: -m.vy * .12, r: 2.2, col: 0xf0e0b0, decay: 3.5, life: .5 });
+      if (m.life <= 0) meteors.splice(i, 1);
+    }
+  }
+
   // ---------- 环境漂浮花瓣/萤火 ----------
   const petals = [];
   for (let i = 0; i < 44; i++) {
@@ -1732,6 +1751,7 @@ const R3D = (() => {
         b.mesh.position.set(Math.cos(a) * b.orbit, b.y + Math.sin(time * 2.5 + b.phase) * 1.5, Math.sin(a) * b.orbit);
       }
       // 聚灵吸气粒子
+      if (grp.userData.glow) grp.userData.glow.material.opacity = .3 + Math.sin(time * 2.4 + t.spin) * .14;
       const st = C.stats(t);
       if ((st && (st.qiRate || st.qiPerSec)) && Math.random() < .3) {
         const a = Math.random() * Math.PI * 2, d = 26 + Math.random() * 22;
@@ -1795,6 +1815,7 @@ const R3D = (() => {
     }
     for (const d of streamGlints) d.material.opacity = .3 + Math.abs(Math.sin(time * 2 + d.userData.ph)) * .5;
     stepPetals(dt, time);
+    stepMeteors(dt);
     stepFogBands(dt, time);
     if (grassWind) grassWind.value = time;
     if (streamWater) streamWater.uniforms.uT.value = time;
