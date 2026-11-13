@@ -14,25 +14,22 @@ function stepUntil(g, cond, maxT, dt) {
 
 function run() {
   // ================= 里程碑 7 =================
-  // ---------- 1. waves.json 与 core 一致 + 曲线 0 error ----------
+  // ---------- 1. waves.json 与 core 一致 + 曲线 0 error（--json 精确值断言） ----------
   {
     fs.writeFileSync(path.join(__dirname, '..', 'waves.json'), JSON.stringify(Core.curveSpec(), null, 1));
     const out = execFileSync('python',
       [path.join(__dirname, '..', 'vendor', 'tower-defense-skill', 'scripts', 'td_curve_check.py'),
-       path.join(__dirname, '..', 'waves.json'), '--band', '0.6,0.95'],
+       path.join(__dirname, '..', 'waves.json'), '--band', '0.6,0.95', '--json'],
       { encoding: 'utf8' });
-    assert(!/ERROR/.test(out), `曲线无 ERROR：\n${out.split('\n').filter(l => l.includes('ERROR')).join('\n')}`);
-    // 峰值波（ok 波）在带内
-    const rows = out.split('\n').filter(l => /^\s*\d+/.test(l));
-    let okWaves = 0, tightWaves = 0;
-    for (const r of rows) {
-      const m = r.trim().match(/^(\d+)\s+\d+\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s+(\w+)/);
-      if (!m) continue;
-      const [, n, p, v] = m;
-      if (v === 'ok' || v === 'tight') { okWaves++; tightWaves += v === 'ok' ? 0 : 0; }
-      assert(parseFloat(p) < 1.0, `波 ${n} 压力 ${p} < 1.0`);
+    const report = JSON.parse(out);
+    const waves = report.waves || [];
+    assert(waves.length === 30, '30 波全检');
+    for (const w of waves) {
+      assert(w.pressure < 1.0, `波 ${w.wave} 压力 ${w.pressure.toFixed(3)} < 1.0（无墙）`);
     }
-    assert(okWaves + tightWaves >= 5, `带内压力波 ≥5（实际 ${okWaves + tightWaves}）`);
+    const inBand = waves.filter(w => w.pressure >= 0.6);
+    assert(inBand.length >= 5, `带内压力波 ≥5（实际 ${inBand.length}）`);
+    assert(waves.every(w => w.pressure <= 0.99), `峰值压力 ≤0.99（实际 max ${Math.max(...waves.map(w => w.pressure)).toFixed(3)}）`);
   }
 
   // ---------- 2. 节奏由官方脚本监管（连续 trivial 的 WARNING 即喘息过长） ----------

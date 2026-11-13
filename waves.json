@@ -139,9 +139,9 @@
    "clear_bonus": 40,
    "groups": [
     {
-     "hp": 72,
-     "count": 8,
-     "speed": 3.15,
+     "hp": 46,
+     "count": 6,
+     "speed": 2.63,
      "spacing": 1.05,
      "bounty": 13,
      "armor": 0
@@ -249,9 +249,9 @@
    "clear_bonus": 56,
    "groups": [
     {
-     "hp": 134,
-     "count": 10,
-     "speed": 3.44,
+     "hp": 86,
+     "count": 8,
+     "speed": 2.88,
      "spacing": 0.8,
      "bounty": 15,
      "armor": 0
@@ -320,9 +320,9 @@
      "armor": 0
     },
     {
-     "hp": 183,
+     "hp": 118,
      "count": 7,
-     "speed": 3.59,
+     "speed": 3,
      "spacing": 0.9,
      "bounty": 15,
      "armor": 0
@@ -334,7 +334,7 @@
    "groups": [
     {
      "hp": 835,
-     "count": 7,
+     "count": 6,
      "speed": 1.52,
      "spacing": 1,
      "bounty": 25,
@@ -375,9 +375,9 @@
    "clear_bonus": 76,
    "groups": [
     {
-     "hp": 251,
-     "count": 12,
-     "speed": 3.74,
+     "hp": 161,
+     "count": 8,
+     "speed": 3.13,
      "spacing": 0.7,
      "bounty": 16,
      "armor": 0
@@ -418,16 +418,16 @@
    "groups": [
     {
      "hp": 209,
-     "count": 28,
+     "count": 24,
      "speed": 3.77,
      "spacing": 0.26,
      "bounty": 7,
      "armor": 0
     },
     {
-     "hp": 309,
-     "count": 9,
-     "speed": 3.84,
+     "hp": 198,
+     "count": 7,
+     "speed": 3.21,
      "spacing": 0.75,
      "bounty": 17,
      "armor": 0
@@ -480,9 +480,9 @@
    "clear_bonus": 90,
    "groups": [
     {
-     "hp": 422,
-     "count": 14,
-     "speed": 3.99,
+     "hp": 271,
+     "count": 9,
+     "speed": 3.33,
      "spacing": 0.55,
      "bounty": 18,
      "armor": 0
@@ -527,11 +527,11 @@
    ]
   },
   {
-   "clear_bonus": 122,
+   "clear_bonus": 148,
    "groups": [
     {
      "hp": 1189,
-     "count": 9,
+     "count": 8,
      "speed": 2.23,
      "spacing": 0.5,
      "bounty": 22,
@@ -539,7 +539,7 @@
     },
     {
      "hp": 2137,
-     "count": 6,
+     "count": 5,
      "speed": 1.71,
      "spacing": 0.75,
      "bounty": 29,
@@ -551,9 +551,9 @@
    "clear_bonus": 138,
    "groups": [
     {
-     "hp": 577,
-     "count": 16,
-     "speed": 4.13,
+     "hp": 371,
+     "count": 10,
+     "speed": 3.45,
      "spacing": 0.48,
      "bounty": 19,
      "armor": 0
@@ -596,9 +596,9 @@
      "armor": 0.5
     },
     {
-     "hp": 641,
+     "hp": 412,
      "count": 5,
-     "speed": 4.13,
+     "speed": 3.45,
      "spacing": 0.6,
      "bounty": 19,
      "armor": 0

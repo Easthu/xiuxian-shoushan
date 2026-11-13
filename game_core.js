@@ -92,7 +92,7 @@
     },
     fukong: {
       key: "fukong", name: "缚空阵", ele: "wind", cost: 70,
-      dmg: 15, rate: 0.8, range: 165, ground: false, air: true,
+      dmg: 18, rate: 0.8, range: 190, ground: false, air: true,
       proj: "lock", color: PAL.green, desc: "气锁御空飞舟，仅对空",
       up: [0, 65, 115],
     },
@@ -198,7 +198,7 @@
     grunt:  { key: "grunt",  name: "妖兽小兵", hp: 32,  spd: 40, bounty: 6,  armor: 0,    leak: 1, r: 10, fly: false, regen: 0,    desc: "基础妖杂" },
     fox:    { key: "fox",    name: "赤瞳狐",   hp: 15,  spd: 92, bounty: 7,  armor: 0,    leak: 1, r: 9,  fly: false, regen: 0,    desc: "极速低血 · 罚慢速单发阵" },
     scale:  { key: "scale",  name: "鳞甲妖",   hp: 64,  spd: 30, bounty: 12, armor: 0.5,  leak: 1, r: 12, fly: false, regen: 0,    desc: "甲坚减免 · 罚低伤高频阵" },
-    boat:   { key: "boat",   name: "御空飞舟", hp: 28,  spd: 55, bounty: 10, armor: 0,    leak: 1, r: 12, fly: true,  regen: 0,    desc: "直线御空 · 罚纯地面阵" },
+    boat:   { key: "boat",   name: "御空飞舟", hp: 18,  spd: 46, bounty: 10, armor: 0,    leak: 1, r: 12, fly: true,  regen: 0,    desc: "直线御空 · 罚纯地面阵" },
     wolf:   { key: "wolf",   name: "妖狼",     hp: 19,  spd: 54, bounty: 4,  armor: 0,    leak: 1, r: 8,  fly: false, regen: 0,    desc: "狼群蜂拥 · 罚单体阵" },
     treant: { key: "treant", name: "再生木妖", hp: 115, spd: 23, bounty: 16, armor: 0,    leak: 2, r: 13, fly: false, regen: 0.02, desc: "持续回血 · 罚低 DPS 磨血" },
     boss:   { key: "boss",   name: "千年妖王", hp: 320, spd: 21, bounty: 90, armor: 0.2,  leak: 3, r: 20, fly: false, regen: 0.006, desc: "每十波临世 · HP 尖峰" },
@@ -218,27 +218,27 @@
     { n: 6,  groups: [G("grunt", 10, 0.75), G("fox", 6, 0.55)], bonus: 32 },
     { n: 7,  groups: [G("grunt", 13, 0.65), G("fox", 7, 0.5)], bonus: 36 },
     { n: 8,  groups: [G("scale", 5, 1.3)], bonus: 38 },                     // 鳞甲妖登场
-    { n: 9,  groups: [G("boat", 8, 1.05)], bonus: 40 },                     // 御空飞舟登场（对空教学）
+    { n: 9,  groups: [G("boat", 6, 1.05)], bonus: 40 },                     // 御空飞舟登场（对空教学）
     { n: 10, groups: [G("boss", 1, 1), G("grunt", 8, 0.65)], bonus: 66 },   // 妖王一波
     { n: 11, groups: [G("wolf", 20, 0.38)], bonus: 48 },                    // 狼群登场
     { n: 12, groups: [G("wolf", 16, 0.36), G("fox", 8, 0.45), G("scale", 3, 1.2)], bonus: 50 },
     { n: 13, groups: [G("scale", 8, 1.0), G("grunt", 12, 0.55)], bonus: 54 },
     { n: 14, groups: [G("treant", 5, 1.5)], bonus: 52 },                    // 再生木妖登场
-    { n: 15, groups: [G("boat", 10, 0.8), G("wolf", 12, 0.38)], bonus: 56 },
+    { n: 15, groups: [G("boat", 8, 0.8), G("wolf", 12, 0.38)], bonus: 56 },
     { n: 16, groups: [G("scale", 10, 0.8), G("treant", 4, 1.3)], bonus: 60 },
     { n: 17, groups: [G("fox", 16, 0.32), G("wolf", 16, 0.34)], bonus: 62 },
     { n: 18, groups: [G("grunt", 24, 0.42), G("boat", 7, 0.9)], bonus: 66 },
-    { n: 19, groups: [G("treant", 7, 1.0), G("scale", 8, 0.85)], bonus: 68 },
+    { n: 19, groups: [G("treant", 6, 1.0), G("scale", 8, 0.85)], bonus: 68 },
     { n: 20, groups: [G("boss", 2, 3), G("wolf", 14, 0.34)], bonus: 94 },   // 妖王双临
-    { n: 21, groups: [G("boat", 12, 0.7), G("fox", 14, 0.32)], bonus: 76 },
+    { n: 21, groups: [G("boat", 8, 0.7), G("fox", 14, 0.32)], bonus: 76 },
     { n: 22, groups: [G("scale", 12, 0.6), G("treant", 6, 0.95)], bonus: 80 },
-    { n: 23, groups: [G("wolf", 28, 0.26), G("boat", 9, 0.75)], bonus: 84 },
+    { n: 23, groups: [G("wolf", 24, 0.26), G("boat", 7, 0.75)], bonus: 84 },
     { n: 24, groups: [G("fox", 18, 0.28), G("scale", 12, 0.6)], bonus: 86 },
     { n: 25, groups: [G("treant", 10, 0.85), G("wolf", 22, 0.28)], bonus: 88 },
-    { n: 26, groups: [G("boat", 14, 0.55), G("scale", 12, 0.55)], bonus: 90 },
+    { n: 26, groups: [G("boat", 9, 0.55), G("scale", 12, 0.55)], bonus: 90 },
     { n: 27, groups: [G("fox", 24, 0.24), G("wolf", 24, 0.26), G("grunt", 18, 0.34)], bonus: 100 },
-    { n: 28, groups: [G("scale", 9, 0.5), G("treant", 6, 0.75)], bonus: 122 },
-    { n: 29, groups: [G("boat", 16, 0.48), G("wolf", 28, 0.24), G("fox", 16, 0.24)], bonus: 138 },
+    { n: 28, groups: [G("scale", 8, 0.5), G("treant", 5, 0.75)], bonus: 148 },
+    { n: 29, groups: [G("boat", 10, 0.48), G("wolf", 28, 0.24), G("fox", 16, 0.24)], bonus: 138 },
     { n: 30, groups: [G("boss", 2, 4), G("scale", 8, 0.5), G("boat", 5, 0.6)], bonus: 130 }, // 终波妖王双临+精锐护卫
   ];
   for (const w of WAVES) { w.hpMul = gw(w.n); w.spdMul = 1 + Math.min(0.5, (w.n - 1) * 0.018); }
@@ -587,7 +587,8 @@
     if (tw && hasT(tw, "leiyin") && !crit && g.rng() < 0.15) {
       const bolt = dmg * 0.3;
       e.hp -= bolt;
-      g.events.push({ t: "bolt", x: e.x || foePos(g, e)[0], y: foePos(g, e)[1] - 60, tx: foePos(g, e)[0], ty: foePos(g, e)[1], mini: true });
+      const [lx, ly] = foePos(g, e);
+      g.events.push({ t: "bolt", x: lx, y: ly - 60, tx: lx, ty: ly, mini: true });
     }
     if (e.hp <= 0) killEnemy(g, e, tw, opts.ele);
     return eff;

@@ -1,0 +1,2070 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>修仙守山</title>
+<style>
+  :root{
+    --paper:#e8e0ce; --ink:#2b2620; --red:#9e2b25; --cyan:#3d6b6b; --gold:#a8842c; --green:#5a6b3d; --purple:#5d3d6b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
+  html,body{height:100%}
+  body{background:var(--paper);display:flex;flex-direction:column;align-items:center;
+       font-family:"Songti SC","STSong","SimSun",serif;overflow:hidden;color:var(--ink)}
+  #hud{width:100%;max-width:1180px;display:flex;justify-content:space-between;align-items:center;padding:8px 16px;gap:10px}
+  #hud .grp{display:flex;gap:14px;align-items:baseline}
+  .stat{font-size:17px;letter-spacing:2px;white-space:nowrap}
+  .stat b{color:var(--red);font-size:19px}
+  .stat .qi{color:var(--cyan)}
+  #title{font-size:26px;letter-spacing:10px;text-shadow:1px 1px 0 rgba(158,43,37,.25)}
+  #sub{font-size:11px;color:#8a7f68;letter-spacing:2px;margin-top:2px;text-align:center}
+  #mid{width:100%;max-width:1180px;display:flex;align-items:stretch;gap:10px;padding:0 16px}
+  #towerbar{display:flex;flex-direction:column;gap:6px;padding:8px 6px;width:118px;flex:none}
+  .tbtn{background:var(--paper);border:1.5px solid var(--ink);padding:5px 7px;cursor:pointer;
+        font-family:inherit;font-size:13px;letter-spacing:1px;line-height:1.25;text-align:left;
+        box-shadow:2px 2px 0 rgba(43,38,32,.18);transition:transform .08s}
+  .tbtn:hover{transform:translate(-1px,-1px)}
+  .tbtn.sel{background:var(--ink);color:var(--paper)}
+  .tbtn.sel .cost{color:#e8d0a0}
+  .tbtn .cost{color:var(--red);font-size:12px}
+  .tbtn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+  .tbtn small{display:block;font-size:10px;color:#8a7f68;letter-spacing:0}
+  .tbtn.sel small{color:#cfc5ae}
+  #wrap{position:relative;flex:1;min-width:0}
+  canvas{display:block;width:100%;height:auto}
+  #wrap::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.42 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E")}
+  #side{width:190px;flex:none;display:flex;flex-direction:column;gap:8px;font-size:12px}
+  .panel{border:1.5px solid var(--ink);padding:8px;background:rgba(232,224,206,.7)}
+  .panel h4{font-size:13px;letter-spacing:2px;border-bottom:1px solid rgba(43,38,32,.3);padding-bottom:4px;margin-bottom:6px}
+  .fpart{display:flex;justify-content:space-between;font-size:12px;line-height:1.7}
+  .fpart .fly{color:var(--green)} .fpart .boss{color:var(--red);font-weight:bold}
+  #btns{display:flex;gap:8px;padding:8px 0}
+  .seal{background:var(--paper);border:2px solid var(--red);color:var(--red);padding:5px 14px;
+        font-family:inherit;font-size:14px;letter-spacing:2px;cursor:pointer;box-shadow:2px 2px 0 rgba(158,43,37,.3)}
+  .seal:hover{background:var(--red);color:var(--paper)}
+  .seal.sel{background:var(--red);color:var(--paper)}
+  .seal:disabled{opacity:.35;cursor:not-allowed}
+  .seal.dark{border-color:var(--ink);color:var(--ink);box-shadow:2px 2px 0 rgba(43,38,32,.3)}
+  .seal.dark:hover{background:var(--ink);color:var(--paper)}
+  #tip{width:100%;max-width:1180px;color:#6b6353;font-size:13px;padding:4px 18px 8px;letter-spacing:1px;min-height:26px}
+  /* 图鉴/结算浮层 */
+  .overlay{position:fixed;inset:0;background:rgba(43,38,32,.55);display:flex;align-items:center;justify-content:center;z-index:50}
+  .sheet{background:var(--paper);border:3px double var(--ink);padding:22px 30px;max-width:720px;max-height:86vh;overflow:auto;
+         box-shadow:0 0 60px rgba(0,0,0,.4)}
+  .sheet h2{letter-spacing:6px;font-size:22px;margin-bottom:10px;color:var(--red)}
+  .codex{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .cc{border:1px solid rgba(43,38,32,.4);padding:7px 8px;font-size:12px;min-height:64px}
+  .cc .nm{font-size:14px;letter-spacing:1px}
+  .cc.locked{opacity:.45;background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(43,38,32,.05) 6px,rgba(43,38,32,.05) 12px)}
+  .cc .rc{font-size:10px;color:#8a7f68}
+  .cc.newf{border-color:var(--gold);box-shadow:0 0 8px rgba(168,132,44,.6)}
+  .traitsTag{font-size:10px;color:var(--cyan)}
+  /* 塔选中面板 */
+  #tpanel{position:absolute;display:none;z-index:20;background:rgba(232,224,206,.94);border:1.5px solid var(--ink);
+          padding:8px;font-size:12px;min-width:150px;box-shadow:3px 3px 0 rgba(43,38,32,.2)}
+  #tpanel .row{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+  #tpanel button{font-family:inherit;font-size:12px;padding:3px 8px;cursor:pointer;border:1px solid var(--ink);background:var(--paper)}
+  #tpanel button:hover{background:var(--ink);color:var(--paper)}
+  #tpanel button:disabled{opacity:.35;cursor:not-allowed}
+  #tpanel .trib{border-color:var(--gold);color:var(--gold);font-weight:bold}
+  .wlabel{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);z-index:15;pointer-events:none;
+          font-size:54px;letter-spacing:18px;color:rgba(43,38,32,.85);text-shadow:2px 2px 0 rgba(232,224,206,.8);
+          opacity:0;transition:opacity .5s}
+  .toast{position:absolute;left:50%;bottom:18%;transform:translateX(-50%);z-index:16;pointer-events:none;
+         font-size:20px;letter-spacing:4px;color:var(--gold);text-shadow:1px 1px 0 rgba(43,38,32,.6);opacity:0;transition:opacity .4s}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="grp">
+    <span class="stat">灵石 <b id="gold">120</b></span>
+    <span class="stat">灵气 <b class="qi" id="qi">10</b></span>
+    <span class="stat">气运 <b id="lives">10</b></span>
+    <span class="stat">斩妖 <b id="kills">0</b></span>
+  </div>
+  <div style="text-align:center"><div id="title">修仙守山</div><div id="sub">妖潮第 <span id="waven">1</span>/30 波 · <span id="phasen">备战</span></div></div>
+  <div class="grp">
+    <span class="stat">无尽纪录 <b id="best">—</b></span>
+    <button class="seal dark" id="codexBtn" style="padding:2px 10px;font-size:13px">图鉴</button>
+    <button class="seal dark" id="sndBtn" style="padding:2px 10px;font-size:13px">音·开</button>
+  </div>
+</div>
+<div id="mid">
+  <div id="towerbar"></div>
+  <div id="wrap">
+    <canvas id="cv" width="960" height="600"></canvas>
+    <div id="tpanel"></div>
+    <div class="wlabel" id="wlabel"></div>
+    <div class="toast" id="toast"></div>
+  </div>
+  <div id="side">
+    <div class="panel"><h4>妖潮预告</h4><div id="preview"></div></div>
+    <div class="panel" id="codexMini"><h4>融合图鉴 <span id="codexCount" style="color:var(--gold)">0</span>/16</h4><div id="codexMiniGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px"></div></div>
+  </div>
+</div>
+<div id="btns">
+  <button class="seal" id="startWaveBtn">召 妖 潮</button>
+  <button class="seal dark" id="ff">快进 ×1</button>
+  <span id="tip">选阵 → 点击山道旁布阵 ｜ 拖动一座阵法到相邻阵法上融合（耗灵气）｜ 点击阵法强化/渡劫/出售</span>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+ * 修仙守山 · 纯逻辑层（零 DOM 依赖，node 可 require，浏览器挂 window.Core）
+ * 渲染层只读这里的状态 + 事件流，不发 DOM。
+ * 数据驱动：TOWERS / FOES / WAVES 全是数据表，改数值不动引擎。
+ * ============================================================ */
+(function (global) {
+
+  // ---------- 地图 ----------
+  const MAP = { W: 960, H: 600 };
+  // 山道折线：屏外入 → S 形穿越 → 右下山门
+  const PATH = [
+    [-40, 110], [300, 110], [300, 330], [110, 330], [110, 510],
+    [560, 510], [560, 170], [730, 170], [730, 420], [920, 420]
+  ];
+  const GATE = PATH[PATH.length - 1];
+  const SPAWN = PATH[0];
+
+  const segs = []; let PLEN = 0;
+  for (let i = 0; i < PATH.length - 1; i++) {
+    const a = PATH[i], b = PATH[i + 1];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    segs.push({ a, b, L, s: PLEN, dx: (b[0] - a[0]) / L, dy: (b[1] - a[1]) / L });
+    PLEN += L;
+  }
+  function posAt(d) {
+    d = Math.max(0, Math.min(PLEN, d));
+    for (const s of segs) {
+      if (d <= s.s + s.L) {
+        const t = d - s.s;
+        return [s.a[0] + s.dx * t, s.a[1] + s.dy * t];
+      }
+    }
+    return GATE.slice();
+  }
+  // d 处的单位法向（左手侧）
+  function pathNormal(d) {
+    d = Math.max(0, Math.min(PLEN - 0.001, d));
+    for (const s of segs) {
+      if (d <= s.s + s.L) return [-s.dy, s.dx];
+    }
+    return [0, -1];
+  }
+  // 点到山道折线的最短距离（布阵合法性）
+  function pathDistTo(x, y) {
+    let best = Infinity;
+    for (const s of segs) {
+      const t = Math.max(0, Math.min(1, ((x - s.a[0]) * (s.b[0] - s.a[0]) + (y - s.a[1]) * (s.b[1] - s.a[1])) / (s.L * s.L)));
+      const dd = Math.hypot(x - (s.a[0] + (s.b[0] - s.a[0]) * t), y - (s.a[1] + (s.b[1] - s.a[1]) * t));
+      if (dd < best) best = dd;
+    }
+    return best;
+  }
+  // 飞行单位直线航线
+  const FLY_A = SPAWN, FLY_B = GATE;
+  const FLY_LEN = Math.hypot(FLY_B[0] - FLY_A[0], FLY_B[1] - FLY_A[1]);
+  function flyPos(t) { // t ∈ [0,1]
+    return [FLY_A[0] + (FLY_B[0] - FLY_A[0]) * t, FLY_A[1] + (FLY_B[1] - FLY_A[1]) * t + 26];
+  }
+
+  // ---------- 调色（demo 基线） ----------
+  const PAL = {
+    paper: "#e8e0ce", ink: "#2b2620", red: "#9e2b25",
+    cyan: "#3d6b6b", gold: "#a8842c", green: "#5a6b3d", purple: "#5d3d6b"
+  };
+
+  // ---------- 基础阵法表（6 座，覆盖标准 TD 角色） ----------
+  const TOWERS = {
+    yujian: {
+      key: "yujian", name: "御剑阵", ele: "metal", cost: 40,
+      dmg: 11, rate: 0.55, range: 130, ground: true, air: false,
+      proj: "sword", color: PAL.red, desc: "飞剑自动斩妖，单体速攻",
+      up: [0, 40, 72], // 升 2/3 级灵石
+    },
+    lieyan: {
+      key: "lieyan", name: "烈焰符阵", ele: "fire", cost: 60,
+      dmg: 13, rate: 1.0, range: 118, ground: true, air: false,
+      proj: "fire", splash: 46, splashMul: 0.7, color: PAL.red, desc: "爆符焚群，溅射 AoE",
+      up: [0, 60, 108],
+    },
+    xuanbing: {
+      key: "xuanbing", name: "玄冰阵", ele: "ice", cost: 60,
+      dmg: 5, rate: 1.15, range: 112, ground: true, air: false,
+      proj: "bolt", slowF: 0.45, slowT: 1.3, color: PAL.cyan, desc: "寒气滞行，减速控场",
+      up: [0, 55, 100],
+    },
+    tianlei: {
+      key: "tianlei", name: "天雷阵", ele: "thunder", cost: 90,
+      dmg: 46, rate: 1.8, range: 152, ground: true, air: false,
+      proj: "none", pierce: 0.55, color: PAL.gold, desc: "引雷诛鳞甲，高伤破甲",
+      up: [0, 85, 150],
+    },
+    fukong: {
+      key: "fukong", name: "缚空阵", ele: "wind", cost: 70,
+      dmg: 18, rate: 0.8, range: 190, ground: false, air: true,
+      proj: "lock", color: PAL.green, desc: "气锁御空飞舟，仅对空",
+      up: [0, 65, 115],
+    },
+    juling: {
+      key: "juling", name: "聚灵阵", ele: "qi", cost: 80,
+      dmg: 0, rate: 0, range: 0, ground: false, air: false,
+      proj: "none", qiRate: 0.6, color: PAL.gold, desc: "汇聚灵气，不攻击 · 融合之本",
+      up: [0, 70, 120],
+    },
+  };
+  const BASE_KEYS = Object.keys(TOWERS);
+
+  // ---------- 融合阵表（游戏灵魂；recipe 无序对，zhenwu 同种保底，secret 为图鉴暗格） ----------
+  // 机制字段：chain{链数,倍率} dot{灼/毒伤,秒} stun{定身率,秒} onKillQi{击杀加灵气}
+  //           onKillAirQi{空杀伤灵气} qiPerSec{产灵气} —— 引擎通用结算
+  const FUSIONS = {
+    shuangren: { key: "shuangren", name: "霜刃剑阵", recipe: ["yujian", "xuanbing"], costQi: 40,
+      dmg: 18, rate: 0.6, range: 150, ground: true, air: false, proj: "frostSword",
+      slowF: 0.35, slowT: 1.2, chain: { n: 1, mul: 0.5 }, color: PAL.cyan, desc: "寒意附剑，剑气霜弹" },
+    zhuxian: { key: "zhuxian", name: "诛仙剑阵", recipe: ["yujian", "tianlei"], costQi: 60,
+      dmg: 26, rate: 0.7, range: 170, ground: true, air: false, proj: "thunderSword",
+      chain: { n: 3, mul: 0.6 }, pierce: 0.3, color: PAL.red, desc: "连锁雷剑 · 招牌阵" },
+    fenjian: { key: "fenjian", name: "焚天剑阵", recipe: ["yujian", "lieyan"], costQi: 40,
+      dmg: 17, rate: 0.65, range: 145, ground: true, air: false, proj: "fireSword",
+      dot: { dps: 6, dur: 3 }, color: PAL.red, desc: "剑锋燃焰，灼烧不熄" },
+    wanjian: { key: "wanjian", name: "万剑归宗", recipe: ["yujian", "fukong"], costQi: 40,
+      dmg: 16, rate: 0.5, range: 155, ground: true, air: true, proj: "sword",
+      chain: { n: 1, mul: 0.45 }, color: PAL.green, desc: "对空对地，万剑齐发" },
+    liaoyuan: { key: "liaoyuan", name: "燎原雾阵", recipe: ["lieyan", "xuanbing"], costQi: 45,
+      dmg: 10, rate: 1.1, range: 130, ground: true, air: false, proj: "fire",
+      splash: 60, splashMul: 0.6, dot: { dps: 5, dur: 2.5 }, color: PAL.purple, desc: "毒雾燎原，绵绵不绝" },
+    zixiao: { key: "zixiao", name: "紫霄神雷", recipe: ["lieyan", "tianlei"], costQi: 50,
+      dmg: 40, rate: 1.4, range: 160, ground: true, air: false, proj: "fire",
+      splash: 55, splashMul: 0.8, pierce: 0.4, color: PAL.purple, desc: "雷火同源，高伤溅射" },
+    danlu: { key: "danlu", name: "丹炉阵", recipe: ["lieyan", "juling"], costQi: 40,
+      dmg: 12, rate: 0.9, range: 115, ground: true, air: false, proj: "fire",
+      dot: { dps: 8, dur: 2 }, onKillQi: 2, color: PAL.gold, desc: "焚妖炼丹，斩之得灵" },
+    hansuo: { key: "hansuo", name: "寒天锁空", recipe: ["xuanbing", "fukong"], costQi: 45,
+      dmg: 10, rate: 0.9, range: 190, ground: false, air: true, proj: "lock",
+      slowF: 0.5, slowT: 1.6, color: PAL.cyan, desc: "寒锁长空，飞舟滞行" },
+    ningquan: { key: "ningquan", name: "玄冰凝泉", recipe: ["xuanbing", "juling"], costQi: 40,
+      dmg: 8, rate: 1.2, range: 120, ground: true, air: false, proj: "bolt",
+      slowF: 0.3, slowT: 1.0, qiPerSec: 0.35, color: PAL.cyan, desc: "凝泉成灵，缓滞生财" },
+    leifa: { key: "leifa", name: "九天雷罚", recipe: ["tianlei", "fukong"], costQi: 45,
+      dmg: 34, rate: 1.3, range: 200, ground: false, air: true, proj: "none",
+      pierce: 0.3, color: PAL.gold, desc: "九天引罚，诛空中鳞甲" },
+    yinlei: { key: "yinlei", name: "引雷纳灵", recipe: ["tianlei", "juling"], costQi: 45,
+      dmg: 22, rate: 1.0, range: 155, ground: true, air: false, proj: "none",
+      chain: { n: 1, mul: 0.5 }, onKillQi: 1, color: PAL.gold, desc: "雷归丹田，斩妖纳灵" },
+    zhenwu: { key: "zhenwu", name: "真武阵", recipe: null, costQi: 25, secret: false,
+      dmg: 0, rate: 0, range: 0, ground: true, air: true, proj: "sword",
+      color: PAL.ink, desc: "同系归一，纯数强化", dynamic: true }, // 数值由同种融合动态生成
+    // —— 图鉴暗格（表上不写，炼成才点亮） ——
+    linlei: { key: "linlei", name: "凛雷阵", recipe: ["xuanbing", "tianlei"], costQi: 50, secret: true,
+      dmg: 20, rate: 1.0, range: 150, ground: true, air: false, proj: "frostSword",
+      stun: { chance: 0.18, dur: 1.1 }, chain: { n: 1, mul: 0.4 }, color: PAL.cyan, desc: "雷凝冰晶，触之即僵" },
+    lingzhou: { key: "lingzhou", name: "御灵舟坞", recipe: ["fukong", "juling"], costQi: 45, secret: true,
+      dmg: 14, rate: 0.7, range: 170, ground: false, air: true, proj: "lock",
+      qiPerSec: 0.25, onKillAirQi: 3, color: PAL.green, desc: "御空纳灵，斩舟倍献" },
+    fenkong: { key: "fenkong", name: "焚空阵", recipe: ["lieyan", "fukong"], costQi: 45, secret: true,
+      dmg: 15, rate: 0.75, range: 165, ground: false, air: true, proj: "fire",
+      dot: { dps: 7, dur: 2.5 }, color: PAL.red, desc: "焚符射空，灼烧飞鳞" },
+    jianxin: { key: "jianxin", name: "剑心通明", recipe: ["yujian", "juling"], costQi: 40, secret: true,
+      dmg: 14, rate: 0.55, range: 140, ground: true, air: false, proj: "sword",
+      qiPerSec: 0.3, color: PAL.gold, desc: "心剑合一，御剑生灵" },
+  };
+  // 无序配方索引
+  const FUSE_INDEX = {};
+  for (const k of Object.keys(FUSIONS)) {
+    const F = FUSIONS[k];
+    if (!F.recipe) continue;
+    FUSE_INDEX[[...F.recipe].sort().join("|")] = k;
+  }
+  // 融合阵升级费用（灵石）：按灵气配方折算，2/3 级递增（与基础阵的经济曲线衔接）
+  for (const k of Object.keys(FUSIONS)) {
+    const F = FUSIONS[k];
+    if (!F.dynamic) F.up = [0, Math.round(F.costQi * 3), Math.round(F.costQi * 5.2)];
+  }
+  // 查配方：同种→真武阵（动态数值），无匹配→null
+  function getFusion(a, b) {
+    if (a === b) {
+      const T = TOWERS[a];
+      return {
+        ...FUSIONS.zhenwu,
+        key: "zhenwu_" + a,
+        name: "真武阵·" + T.name.slice(0, 2),
+        ele: T.ele, color: T.color, costQi: 25,
+        dmg: T.dmg * 2.2, rate: T.rate, range: T.range + 30,
+        ground: T.ground, air: T.air, proj: T.proj,
+        splash: T.splash, splashMul: T.splashMul,
+        slowF: T.slowF, slowT: T.slowT, pierce: T.pierce, qiRate: T.qiRate,
+        up: [0, Math.round(25 * 1.5 * 2), Math.round(25 * 2.6 * 2)], desc: FUSIONS.zhenwu.desc,
+      };
+    }
+    const k = FUSE_INDEX[[a, b].sort().join("|")];
+    if (!k) return null;
+    return FUSIONS[k];
+  }
+  const CODEX_ALL = Object.keys(FUSIONS); // 16 格（zhenwu 为代表格）
+
+  // ---------- 妖兽表（每种惩罚一种偷懒布阵） ----------
+  const FOES = {
+    grunt:  { key: "grunt",  name: "妖兽小兵", hp: 32,  spd: 40, bounty: 6,  armor: 0,    leak: 1, r: 10, fly: false, regen: 0,    desc: "基础妖杂" },
+    fox:    { key: "fox",    name: "赤瞳狐",   hp: 15,  spd: 92, bounty: 7,  armor: 0,    leak: 1, r: 9,  fly: false, regen: 0,    desc: "极速低血 · 罚慢速单发阵" },
+    scale:  { key: "scale",  name: "鳞甲妖",   hp: 64,  spd: 30, bounty: 12, armor: 0.5,  leak: 1, r: 12, fly: false, regen: 0,    desc: "甲坚减免 · 罚低伤高频阵" },
+    boat:   { key: "boat",   name: "御空飞舟", hp: 18,  spd: 46, bounty: 10, armor: 0,    leak: 1, r: 12, fly: true,  regen: 0,    desc: "直线御空 · 罚纯地面阵" },
+    wolf:   { key: "wolf",   name: "妖狼",     hp: 19,  spd: 54, bounty: 4,  armor: 0,    leak: 1, r: 8,  fly: false, regen: 0,    desc: "狼群蜂拥 · 罚单体阵" },
+    treant: { key: "treant", name: "再生木妖", hp: 115, spd: 23, bounty: 16, armor: 0,    leak: 2, r: 13, fly: false, regen: 0.02, desc: "持续回血 · 罚低 DPS 磨血" },
+    boss:   { key: "boss",   name: "千年妖王", hp: 320, spd: 21, bounty: 90, armor: 0.2,  leak: 3, r: 20, fly: false, regen: 0.006, desc: "每十波临世 · HP 尖峰" },
+  };
+
+  // ---------- 30 波妖潮数据表（数值骨架，里程碑7用曲线脚本校准） ----------
+  // hpMul = 1.11^w；新怪单独登场（telegraph 由 preview 负责）；压力峰之间留喘息波
+  const HP_GROWTH = 1.11;
+  function gw(w) { return Math.pow(HP_GROWTH, w); }
+  function G(type, count, spacing) { return { type, count, spacing }; }
+  const WAVES = [
+    { n: 1,  groups: [G("grunt", 7, 1.05)], bonus: 18 },
+    { n: 2,  groups: [G("grunt", 9, 0.95)], bonus: 20 },
+    { n: 3,  groups: [G("grunt", 10, 0.85), G("grunt", 4, 0.7)], bonus: 24 },
+    { n: 4,  groups: [G("grunt", 14, 0.75)], bonus: 26 },
+    { n: 5,  groups: [G("fox", 9, 0.7)], bonus: 30 },                       // 赤瞳狐登场
+    { n: 6,  groups: [G("grunt", 10, 0.75), G("fox", 6, 0.55)], bonus: 32 },
+    { n: 7,  groups: [G("grunt", 13, 0.65), G("fox", 7, 0.5)], bonus: 36 },
+    { n: 8,  groups: [G("scale", 5, 1.3)], bonus: 38 },                     // 鳞甲妖登场
+    { n: 9,  groups: [G("boat", 6, 1.05)], bonus: 40 },                     // 御空飞舟登场（对空教学）
+    { n: 10, groups: [G("boss", 1, 1), G("grunt", 8, 0.65)], bonus: 66 },   // 妖王一波
+    { n: 11, groups: [G("wolf", 20, 0.38)], bonus: 48 },                    // 狼群登场
+    { n: 12, groups: [G("wolf", 16, 0.36), G("fox", 8, 0.45), G("scale", 3, 1.2)], bonus: 50 },
+    { n: 13, groups: [G("scale", 8, 1.0), G("grunt", 12, 0.55)], bonus: 54 },
+    { n: 14, groups: [G("treant", 5, 1.5)], bonus: 52 },                    // 再生木妖登场
+    { n: 15, groups: [G("boat", 8, 0.8), G("wolf", 12, 0.38)], bonus: 56 },
+    { n: 16, groups: [G("scale", 10, 0.8), G("treant", 4, 1.3)], bonus: 60 },
+    { n: 17, groups: [G("fox", 16, 0.32), G("wolf", 16, 0.34)], bonus: 62 },
+    { n: 18, groups: [G("grunt", 24, 0.42), G("boat", 7, 0.9)], bonus: 66 },
+    { n: 19, groups: [G("treant", 6, 1.0), G("scale", 8, 0.85)], bonus: 68 },
+    { n: 20, groups: [G("boss", 2, 3), G("wolf", 14, 0.34)], bonus: 94 },   // 妖王双临
+    { n: 21, groups: [G("boat", 8, 0.7), G("fox", 14, 0.32)], bonus: 76 },
+    { n: 22, groups: [G("scale", 12, 0.6), G("treant", 6, 0.95)], bonus: 80 },
+    { n: 23, groups: [G("wolf", 24, 0.26), G("boat", 7, 0.75)], bonus: 84 },
+    { n: 24, groups: [G("fox", 18, 0.28), G("scale", 12, 0.6)], bonus: 86 },
+    { n: 25, groups: [G("treant", 10, 0.85), G("wolf", 22, 0.28)], bonus: 88 },
+    { n: 26, groups: [G("boat", 9, 0.55), G("scale", 12, 0.55)], bonus: 90 },
+    { n: 27, groups: [G("fox", 24, 0.24), G("wolf", 24, 0.26), G("grunt", 18, 0.34)], bonus: 100 },
+    { n: 28, groups: [G("scale", 8, 0.5), G("treant", 5, 0.75)], bonus: 148 },
+    { n: 29, groups: [G("boat", 10, 0.48), G("wolf", 28, 0.24), G("fox", 16, 0.24)], bonus: 138 },
+    { n: 30, groups: [G("boss", 2, 4), G("scale", 8, 0.5), G("boat", 5, 0.6)], bonus: 130 }, // 终波妖王双临+精锐护卫
+  ];
+  for (const w of WAVES) { w.hpMul = gw(w.n); w.spdMul = 1 + Math.min(0.5, (w.n - 1) * 0.018); }
+
+  // ---------- 无尽模式（里程碑8）：30 波后动态妖潮 ----------
+  function endlessWave(n) { // n = 全局波次号（>30）
+    const ex = n - 30; // 无尽第几波
+    const hpMul = Math.pow(HP_GROWTH, n);
+    const spdMul = 1.5 + Math.min(0.8, ex * 0.02);
+    const boss = ex % 5 === 0;
+    const G_ = (type, count, spacing) => ({ type, count, spacing });
+    let groups;
+    if (boss) groups = [G_("boss", 1 + Math.floor(ex / 10), 3), G_("scale", 8 + ex, 0.5), G_("boat", 6 + Math.floor(ex / 2), 0.6)];
+    else if (ex % 3 === 1) groups = [G_("wolf", 20 + ex * 2, 0.22), G_("fox", 12 + ex, 0.24)];
+    else if (ex % 3 === 2) groups = [G_("scale", 10 + ex, 0.5), G_("treant", 6 + Math.floor(ex / 2), 0.7), G_("boat", 6 + ex, 0.55)];
+    else groups = [G_("grunt", 18 + ex * 2, 0.3), G_("wolf", 14 + ex, 0.28), G_("fox", 10 + ex, 0.26)];
+    return { n, groups, bonus: 130 + ex * 8, hpMul, spdMul };
+  }
+  function startEndless(g) {
+    if (g.phase !== "win") return false;
+    g.endless = true;
+    g.phase = "build";
+    g.autoT = 20;
+    return true;
+  }
+
+  // ---------- 跨局存档（localStorage 由渲染层读写；core 只做纯数据） ----------
+  const SAVE_KEY = "xiuxian_shoushan_v1";
+  function makeSave(g, extra) {
+    return {
+      ver: 1,
+      bestWave: Math.max((extra && extra.bestWave) || 0, g.wave),
+      codex: Object.assign({}, (extra && extra.codex) || {}, g.codex),           // 图鉴累计（不灭）
+      traitBank: Array.from(new Set([].concat((extra && extra.traitBank) || [], ...g.towers.map(t => t.traits)))), // 词条收藏
+      maxRealm: Math.max((extra && extra.maxRealm) || 0, ...g.towers.map(t => t.realm || 0), 0),
+      updatedAt: Date.now(),
+    };
+  }
+  // 无尽纪录取"打到的最深波次"
+  function recordWave(g) { return g.wave; }
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  let _id = 1;
+  const nid = () => _id++;
+
+  // ---------- 游戏状态 ----------
+  function createGame(opts) {
+    opts = opts || {};
+    return {
+      gold: 120, qi: 10, lives: 10,
+      wave: 0, totalWaves: WAVES.length,
+      phase: "build",        // build → wave → win/over
+      autoT: Infinity,       // 波间倒计时（首波无限建造期）
+      speed: 1,              // 快进（渲染层把 dt×speed 分片喂 gameStep）
+      enemies: [], towers: [], projectiles: [],
+      buildQueue: [],        // 生成队列 [{type, at(绝对时刻)}]，绝对时刻用 g.clock
+      clock: 0, kills: 0, leaked: 0, events: [],
+      spentTotal: 0,
+      rng: mulberry32(opts.seed != null ? opts.seed : (Math.random() * 1e9) | 0),
+      endless: false,        // 里程碑8
+      codex: {},             // 融合图鉴：{ [fusionKey]: waveN }，炼成才点亮
+      stats: { goldEarned: 0 },
+      nextFoeId: 1,
+    };
+  }
+
+  // ---------- 布阵 ----------
+  const TOWER_R = 17;        // 基础阵体半径（渲染/布阵共用）
+  function canPlace(g, x, y, typeKey) {
+    if (x < TOWER_R + 6 || y < TOWER_R + 6 || x > MAP.W - TOWER_R - 6 || y > MAP.H - TOWER_R - 6)
+      return { ok: false, why: "出界" };
+    if (pathDistTo(x, y) < 30) return { ok: false, why: "距山道过近" };
+    for (const t of g.towers) {
+      if (Math.hypot(t.x - x, t.y - y) < radiusOf(t) + TOWER_R + 4) return { ok: false, why: "与阵法重叠" };
+    }
+    const T = TOWERS[typeKey];
+    if (!T) return { ok: false, why: "未知阵法" };
+    if (g.gold < T.cost) return { ok: false, why: "灵石不足" };
+    return { ok: true };
+  }
+  function placeTower(g, x, y, typeKey) {
+    if (!canPlace(g, x, y, typeKey).ok) return null;
+    const T = TOWERS[typeKey];
+    g.gold -= T.cost;
+    const t = {
+      id: nid(), kind: "base", type: typeKey, name: T.name,
+      x, y, cd: 0, lvl: 1, spent: T.cost, angle: -Math.PI / 2,
+      mode: "first", traits: [], realm: 0, fuseOf: null,
+      spin: g.rng() * Math.PI * 2, // 符纹缓转相位
+    };
+    g.towers.push(t);
+    return t;
+  }
+
+  // ---------- 妖兽生成 ----------
+  // opts: { d, spdMul, hpMul }（测试钩子=正式生成路径）
+  function spawnFoe(g, typeKey, opts) {
+    opts = opts || {};
+    const F = FOES[typeKey];
+    if (!F) return null;
+    const hpMul = opts.hpMul != null ? opts.hpMul : 1;
+    const e = {
+      id: nid(), type: typeKey, name: F.name,
+      hp: F.hp * hpMul, maxhp: F.hp * hpMul,
+      baseSpd: F.spd * (opts.spdMul != null ? opts.spdMul : 1),
+      spd: F.spd * (opts.spdMul != null ? opts.spdMul : 1),
+      d: opts.d || 0, armor: F.armor, fly: F.fly, regen: F.regen,
+      bounty: F.bounty, leakDamage: F.leak, r: F.r,
+      slowT: 0, slowF: 0, burnDps: 0, burnT: 0, stunT: 0,
+      dead: false, leaked: false, hitT: 0,
+      wob: g.rng() * Math.PI * 2, // 步态相位
+    };
+    if (e.fly) { e.flyT = 0; } // 航线进度
+    g.enemies.push(e);
+    return e;
+  }
+
+  // ---------- 波次 ----------
+  function startWave(g) {
+    if (g.phase !== "build") return false;
+    const w = (g.endless && g.wave >= WAVES.length) ? endlessWave(g.wave + 1) : WAVES[g.wave];
+    if (!w) return false;
+    // 提前召妖奖励：剩余倒计时折算灵气（奖励自信，不淹没主经济）
+    let qiBonus = 0;
+    if (isFinite(g.autoT) && g.autoT > 0) qiBonus = Math.ceil(g.autoT * 0.5);
+    if (qiBonus > 0) g.events && g.events.push({ t: "qiGift", qi: qiBonus });
+    g.qi += qiBonus;
+    // 生成队列：groups 依次铺开
+    let t0 = g.clock;
+    g.buildQueue = [];
+    for (const grp of w.groups) {
+      for (let i = 0; i < grp.count; i++) {
+        g.buildQueue.push({ type: grp.type, at: t0, hpMul: w.hpMul, spdMul: w.spdMul });
+        t0 += grp.spacing;
+      }
+    }
+    g.phase = "wave";
+    g.waveBonus = w.bonus;
+    return true;
+  }
+    // 下一波预告（渲染 UI 用）
+  function wavePreview(g) {
+    const w = (g.endless && g.wave >= WAVES.length) ? endlessWave(g.wave + 1) : WAVES[g.wave];
+    if (!w) return null;
+    const parts = [];
+    for (const grp of w.groups) {
+      const F = FOES[grp.type];
+      const p = parts.find(x => x.key === grp.type);
+      if (p) p.count += grp.count; else parts.push({ key: grp.type, name: F.name, count: grp.count, fly: F.fly, boss: grp.type === "boss" });
+    }
+    return { n: w.n, parts, bonus: w.bonus };
+  }
+
+  // ---------- 阵法属性统一访问器（基础/融合一视同仁） ----------
+  function stats(t) { return TOWERS[t.type] || FUSIONS_BY_KEY(t.type) || null; }
+  function FUSIONS_BY_KEY(k) {
+    if (!k.startsWith("zhenwu_")) return FUSIONS[k] || null;
+    // 真武阵动态：还原母阵
+    const base = k.slice(7);
+    return getFusion(base, base);
+  }
+  function radiusOf(t) { return t.kind === "fusion" ? 30 : TOWER_R; }
+
+  // ---------- 索敌（skill：默认 first = 路径进度优先） ----------
+  function acquire(t, g) {
+    const T = stats(t);
+    if (!T) return null;
+    const dongxu = hasT(t, "dongxu"); // 洞虚：对空对地全能
+    let best = null, score = -Infinity;
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      const canHit = dongxu ? true : (e.fly ? T.air : T.ground);
+      if (!canHit) continue;
+      const [ex, ey] = foePos(g, e);
+      const dd = Math.hypot(ex - t.x, ey - t.y);
+      if (dd > towerRange(t)) continue;
+      let s;
+      switch (t.mode) {
+        case "closest": s = -dd; break;
+        case "strongest": s = e.hp; break;
+        case "weakest": s = -e.hp; break;
+        default: s = e.fly ? e.flyT * FLY_LEN : e.d; // first
+      }
+      if (s > score) { score = s; best = e; }
+    }
+    return best;
+  }
+  function towerRange(t) {
+    const T = stats(t);
+    if (!T) return 0;
+    return T.range + (t.lvl - 1) * 10 + (t.realm || 0) * 8 + (hasT(t, "fanwei") ? T.range * 0.15 : 0);
+  }
+
+  // ---------- 升级 / 出售 / 索敌切换（里程碑3） ----------
+  function upgradeTower(g, id) {
+    const t = g.towers.find(x => x.id === id);
+    if (!t || t.lvl >= 3) return { ok: false, why: "已达三级" };
+    const T = stats(t);
+    if (!T) return { ok: false, why: "未知阵法" };
+    const cost = T.up[t.lvl];
+    if (g.gold < cost) return { ok: false, why: "灵石不足" };
+    g.gold -= cost; t.spent += cost; t.lvl++;
+    return { ok: true, cost, lvl: t.lvl };
+  }
+  function sellTower(g, id) {
+    const i = g.towers.findIndex(x => x.id === id);
+    if (i < 0) return { ok: false, refund: 0 };
+    const t = g.towers[i];
+    const refund = Math.round(t.spent * 0.7);
+    g.gold += refund;
+    g.towers.splice(i, 1);
+    return { ok: true, refund };
+  }
+  function setTargetMode(g, id, mode) {
+    const t = g.towers.find(x => x.id === id);
+    if (!t || !["first", "last", "closest", "strongest", "weakest"].includes(mode)) return false;
+    t.mode = mode;
+    return true;
+  }
+
+  // ---------- 阵法融合（里程碑4 · 游戏灵魂） ----------
+  const FUSE_DIST = TOWER_R * 3; // 相邻阈值：两阵圆心 ≤ 51px（禁重叠 38px 之上留出宽松环带，拖拽手感友好）
+  function canFuse(g, idA, idB) {
+    const a = g.towers.find(x => x.id === idA), b = g.towers.find(x => x.id === idB);
+    if (!a || !b || a === b) return { ok: false, why: "无效目标" };
+    if (a.kind === "fusion" || b.kind === "fusion") return { ok: false, why: "融合阵不可再融合" };
+    if (Math.hypot(a.x - b.x, a.y - b.y) > FUSE_DIST) return { ok: false, why: "两阵不相邻" };
+    const F = getFusion(a.type, b.type);
+    if (!F) return { ok: false, why: "无此配方" };
+    if (g.qi < F.costQi) return { ok: false, why: "灵气不足", need: F.costQi, have: Math.floor(g.qi) };
+    return { ok: true, fusion: F };
+  }
+  // 拖 A 到 B 上 → A 为体（保留位置），B 化入；等级继承=max，投入折算 70% 入灵气
+  function fuseTowers(g, idA, idB) {
+    const chk = canFuse(g, idA, idB);
+    if (!chk.ok) return chk;
+    const a = g.towers.find(x => x.id === idA), b = g.towers.find(x => x.id === idB);
+    const F = chk.fusion;
+    g.qi -= F.costQi;
+    const lvl = Math.max(a.lvl, b.lvl);
+    const spent = a.spent + b.spent;
+    // 移除 B
+    const bi = g.towers.indexOf(b);
+    g.towers.splice(bi, 1);
+    // A 原地化融合阵
+    a.kind = "fusion";
+    a.type = F.key.startsWith("zhenwu") ? "zhenwu_" + a.type : F.key;
+    a.name = F.name;
+    a.lvl = lvl;
+    a.spent = spent;
+    a.fuseOf = [a.type === F.key ? F.recipe : null, b.type].filter(Boolean);
+    a.fuseRecipe = chk.fusion.recipe || [b.type, b.type]; // 记录配方（真武为同种对）
+    a.cd = 0;
+    a.color = F.color;
+    a.spin = g.rng() * Math.PI * 2;
+    // 图鉴点亮（真武统一记 zhenwu 格）
+    const codexKey = F.key === "zhenwu" || F.dynamic ? "zhenwu" : F.key;
+    const isNew = !(codexKey in g.codex);
+    if (isNew) g.codex[codexKey] = g.wave + 1;
+    g.events.push({ t: "fuse", x: a.x, y: a.y, name: F.name, isNew, codexKey, color: F.color });
+    return { ok: true, fusion: F, isNew, codexKey };
+  }
+  // 图鉴全集（渲染 UI 用；真武 1 格代表）
+  function codexList() {
+    return Object.keys(FUSIONS).map(k => {
+      const F = FUSIONS[k];
+      return { key: k, name: F.name, desc: F.desc, secret: !!F.secret, recipe: F.recipe, color: F.color, costQi: F.costQi };
+    });
+  }
+
+  // ---------- 渡劫升境 + 词条池（里程碑5 · 风险成长） ----------
+  const REALMS = ["练气", "筑基", "金丹", "元婴"];
+  const TRIB_FAIL = [0.20, 0.35, 0.50];   // 升 筑基/金丹/元婴 失败率
+  const TRIB_COST = [30, 60, 100];         // 灵气消耗
+  // 词条池（14 ≥ 12；apply 字段声明生效点，引擎按 key 挂钩）
+  const TRAITS = {
+    crit:   { key: "crit",   name: "暴击",   desc: "15% 概率双倍伤害" },
+    pierce: { key: "pierce", name: "穿透",   desc: "破甲 +30%" },
+    chain:  { key: "chain",  name: "连锁",   desc: "连锁 +1 跳（无连锁则获得 1 跳 50%）" },
+    xiling: { key: "xiling", name: "吸灵",   desc: "击杀额外 +1 灵气" },
+    sudu:   { key: "sudu",   name: "攻速",   desc: "出手速率 +18%" },
+    fanwei: { key: "fanwei", name: "范围",   desc: "射程 +15%" },
+    zhongshang: { key: "zhongshang", name: "重伤", desc: "减速时长 +25%" },
+    zhuoxin:{ key: "zhuoxin",name: "灼心",   desc: "攻击附带燃伤" },
+    dongxu: { key: "dongxu", name: "洞虚",   desc: "对空对地全能" },
+    lingmai:{ key: "lingmai",name: "聚灵脉", desc: "产灵效率 +50%" },
+    jianyi: { key: "jianyi", name: "剑意",   desc: "伤害 +12%" },
+    leiyin: { key: "leiyin", name: "雷引",   desc: "15% 概率引落雷 30% 伤害" },
+    dingshen:{ key: "dingshen", name: "定身符", desc: "8% 概率定身 0.8s" },
+    yufeng: { key: "yufeng", name: "御风",   desc: "弹速 +40%" },
+  };
+  const TRAIT_KEYS = Object.keys(TRAITS);
+  // 3 级阵法渡劫：成功 realm+1 且得 1 词条；失败降一级（不碎）
+  function attemptTribulation(g, id, opts) {
+    opts = opts || {};
+    const t = g.towers.find(x => x.id === id);
+    if (!t) return { ok: false, why: "无此阵法" };
+    if (t.lvl < 3) return { ok: false, why: "需三级阵法" };
+    if (t.realm >= 3) return { ok: false, why: "已至元婴" };
+    const cost = TRIB_COST[t.realm];
+    if (g.qi < cost) return { ok: false, why: "灵气不足", need: cost, have: Math.floor(g.qi) };
+    g.qi -= cost;
+    const failP = TRIB_FAIL[t.realm];
+    const win = opts.force === "win" ? true : opts.force === "lose" ? false : g.rng() >= failP;
+    if (!win) {
+      t.lvl = Math.max(1, t.lvl - 1);
+      g.events.push({ t: "tribFail", x: t.x, y: t.y, realm: REALMS[t.realm] });
+      return { ok: true, win: false, lvl: t.lvl };
+    }
+    t.realm++;
+    const pool = TRAIT_KEYS.filter(k => !t.traits.includes(k));
+    const trait = pool[Math.floor(g.rng() * pool.length)] || null;
+    if (trait) t.traits.push(trait);
+    g.events.push({ t: "tribWin", x: t.x, y: t.y, realm: REALMS[t.realm], trait });
+    return { ok: true, win: true, realm: t.realm, trait, name: trait ? TRAITS[trait].name : null };
+  }
+  // 融合阵的战斗属性（里程碑4启用；这里先给占位，避免 acquire 崩）
+  function FUSION_TOWER_STATS(t) { return { ground: false, air: false }; }
+
+  function foePos(g, e) {
+    if (e.fly) return flyPos(e.flyT || 0);
+    return posAt(e.d);
+  }
+
+  // ---------- 伤害结算（含词条：暴击/穿透/雷引） ----------
+  function hitEnemy(g, e, dmg, opts) {
+    opts = opts || {};
+    if (e.dead) return 0;
+    const tw = opts.tw;
+    let pierce = opts.pierce || 0;
+    if (tw && hasT(tw, "pierce")) pierce = Math.min(1, pierce + 0.3);
+    let crit = false;
+    if (tw && hasT(tw, "crit") && g.rng() < 0.15) { dmg *= 2; crit = true; }
+    const eff = dmg * (1 - Math.min(0.85, e.armor) * (1 - pierce));
+    e.hp -= eff;
+    e.hitT = 0.18; // 受击白闪
+    g.events.push({ t: "hit", x: foePos(g, e)[0], y: foePos(g, e)[1], dmg: Math.round(eff), eid: e.id, ele: opts.ele || "metal", crit });
+    // 雷引：15% 概率引落雷 30% 伤害
+    if (tw && hasT(tw, "leiyin") && !crit && g.rng() < 0.15) {
+      const bolt = dmg * 0.3;
+      e.hp -= bolt;
+      const [lx, ly] = foePos(g, e);
+      g.events.push({ t: "bolt", x: lx, y: ly - 60, tx: lx, ty: ly, mini: true });
+    }
+    if (e.hp <= 0) killEnemy(g, e, tw, opts.ele);
+    return eff;
+  }
+  // 击杀结算（直伤/DoT 共用；tw=来源阵法，融合阵吃 onKillQi 类词条）
+  function killEnemy(g, e, tw, ele) {
+    if (e.dead) return;
+    e.dead = true;
+    const b = bountyOf(e, g.wave + 1);
+    g.gold += b; g.stats.goldEarned += b;
+    g.qi += 1; g.kills++;
+    if (tw) {
+      const T = stats(tw);
+      if (T && T.onKillQi) g.qi += T.onKillQi;
+      if (T && T.onKillAirQi && e.fly) g.qi += T.onKillAirQi;
+      if (hasT(tw, "xiling")) g.qi += 1; // 吸灵词条
+    }
+    g.events.push({ t: "kill", x: foePos(g, e)[0], y: foePos(g, e)[1], bounty: b, eid: e.id, big: e.type === "boss", qi: 1 + ((tw && stats(tw) && stats(tw).onKillQi) || 0) });
+  }
+
+  // ---------- 主步 ----------
+  function gameStep(g, dt) {
+    g.events = [];
+    if (g.phase === "over" || g.phase === "win") return g.events;
+    g.clock += dt;
+
+    // --- 建造期倒计时 ---
+    if (g.phase === "build" && g.wave > 0) {
+      g.autoT -= dt;
+      if (g.autoT <= 0) startWave(g);
+    }
+
+    // --- 生成队列 ---
+    if (g.phase === "wave") {
+      while (g.buildQueue.length && g.buildQueue[0].at <= g.clock) {
+        const q = g.buildQueue.shift();
+        const e = spawnFoe(g, q.type, { hpMul: q.hpMul, spdMul: q.spdMul });
+        g.events.push({ t: "spawn", eid: e ? e.id : 0, type: q.type });
+      }
+    }
+
+    // --- 妖兽行进 ---
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      // 减速/定身衰减
+      if (e.slowT > 0) e.slowT -= dt;
+      if (e.stunT > 0) e.stunT -= dt;
+      // 燃烧 DoT（里程碑4/5 机制，字段先通）
+      if (e.burnT > 0) {
+        e.burnT -= dt;
+        e.hp -= e.burnDps * dt;
+        if (g.clock % 0.2 < dt) g.events.push({ t: "burn", x: foePos(g, e)[0], y: foePos(g, e)[1] });
+        if (e.hp <= 0) { killEnemy(g, e, e.dotTw, "fire"); continue; }
+      }
+      // 回血（再生木妖）
+      if (e.regen > 0 && e.hp < e.maxhp) e.hp = Math.min(e.maxhp, e.hp + e.maxhp * e.regen * dt);
+      // 受击闪衰减
+      if (e.hitT > 0) e.hitT -= dt;
+      // 移动（携带剩余距离天然满足；快慢速同帧推进；定身冻结）
+      const mul = e.stunT > 0 ? 0 : (e.slowT > 0 ? (1 - e.slowF) : 1);
+      if (e.fly) {
+        e.flyT += (e.spd * mul * dt) / FLY_LEN;
+        if (e.flyT >= 1) { leak(g, e); continue; }
+      } else {
+        e.d += e.spd * mul * dt;
+        if (e.d >= PLEN) { leak(g, e); continue; }
+      }
+    }
+    g.enemies = g.enemies.filter(e => !e.dead && !e.leaked);
+
+    // --- 塔攻击 ---
+    for (const t of g.towers) {
+      t.spin += dt;
+      const T = stats(t);
+      if (!T) continue;
+      // 产灵气（聚灵/凝泉/舟坞/剑心；聚灵脉 +50%）
+      const qRate = (T.qiRate || T.qiPerSec || 0) * (hasT(t, "lingmai") ? 1.5 : 1);
+      if (qRate) g.qi += qRate * dt * (1 + (t.lvl - 1) * 0.5);
+      if (!T.rate || T.rate <= 0) continue; // 纯产灵阵不攻击
+      if (t.cd > 0) { t.cd -= dt; continue; }
+      const target = acquire(t, g);
+      if (!target) continue;
+      const [tx, ty] = foePos(g, target);
+      t.angle = Math.atan2(ty - t.y, tx - t.x);
+      const dmg = towerDmg(t);
+      t.cd = T.rate * Math.pow(0.92, t.lvl - 1) * (hasT(t, "sudu") ? 0.85 : 1);
+      // 连锁词条：+1 跳（无连锁则获得 1 跳 50%）
+      let chain = T.chain || null;
+      if (hasT(t, "chain")) chain = chain ? { ...chain, n: chain.n + 1 } : { n: 1, mul: 0.5 };
+      const common = {
+        chain, dot: T.dot || null, stun: T.stun || null,
+        onKillQi: T.onKillQi || 0, onKillAirQi: T.onKillAirQi || 0,
+        splash: T.splash || 0, splashMul: T.splashMul || 0.7,
+        pierce: T.pierce || 0,
+        slowF: T.slowF || 0, slowT: (T.slowT || 0) * (hasT(t, "zhongshang") ? 1.25 : 1),
+        ele: T.ele, srcId: t.id, born: g.clock, tw: t,
+        extraBurn: hasT(t, "zhuoxin") ? dmg * 0.5 : 0, // 灼心：附 50% 一次燃伤
+        stunTrait: hasT(t, "dingshen") ? { chance: 0.08, dur: 0.8 } : null,
+      };
+      if (T.proj === "none") {
+        // 即时雷击（天雷/雷罚/引雷）
+        hitEnemy(g, target, dmg, { pierce: T.pierce || 0, ele: "thunder", tw: t });
+        if (common.extraBurn) applyDot(target, { dps: dmg * 0.5, dur: 1.5 }, t);
+        procStun(g, target, common.stunTrait);
+        procChain(g, tx, ty, dmg, chain, T.pierce || 0, target.id);
+        g.events.push({ t: "bolt", x: t.x, y: t.y, tx, ty });
+      } else {
+        g.projectiles.push({
+          id: nid(), kind: T.proj, x: t.x, y: t.y, tx, ty,
+          targetId: target.id, spd: 500 * (hasT(t, "yufeng") ? 1.4 : 1), dmg, ...common,
+        });
+        g.events.push({ t: "shot", x: t.x, y: t.y, tx, ty, kind: T.proj });
+      }
+    }
+
+    // --- 弹道 ---
+    for (const p of g.projectiles) {
+      // 目标活着则追踪其位置（制导剑气）
+      const tgt = g.enemies.find(e => e.id === p.targetId && !e.dead && !e.leaked);
+      if (tgt) { const [nx, ny] = foePos(g, tgt); p.tx = nx; p.ty = ny; }
+      const dx = p.tx - p.x, dy = p.ty - p.y;
+      const L = Math.hypot(dx, dy);
+      const step = p.spd * dt;
+      if (L <= step) {
+        p.done = true;
+        const opts = { pierce: p.pierce, ele: p.ele, tw: p.tw };
+        if (p.splash) {
+          // AoE：落点溅射（主目标全额，其余溅射；附带 DoT/减速/定身）
+          for (const e of g.enemies) {
+            if (e.dead || e.fly) continue;
+            const [ex, ey] = foePos(g, e);
+            if (Math.hypot(ex - p.tx, ey - p.ty) <= p.splash) {
+              hitEnemy(g, e, p.dmg * (e.id === p.targetId ? 1 : p.splashMul), opts);
+              applyDot(e, p.dot, p.tw);
+              if (p.extraBurn) applyDot(e, { dps: p.extraBurn * 0.4, dur: 1.5 }, p.tw);
+              if (p.slowF) { e.slowF = Math.max(e.slowT > 0 ? e.slowF : 0, p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
+              procStun(g, e, p.stun);
+              procStun(g, e, p.stunTrait);
+            }
+          }
+          g.events.push({ t: "boom", x: p.tx, y: p.ty, r: p.splash, ele: p.ele });
+          procChain(g, p.tx, p.ty, p.dmg, p.chain, p.pierce, p.targetId);
+        } else {
+          const e = tgt;
+          if (e) {
+            hitEnemy(g, e, p.dmg, opts);
+            applyDot(e, p.dot, p.tw);
+            if (p.extraBurn) applyDot(e, { dps: p.extraBurn * 0.4, dur: 1.5 }, p.tw);
+            if (p.slowF) { e.slowF = Math.max(e.slowT > 0 ? e.slowF : 0, p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
+            procStun(g, e, p.stun);
+            procStun(g, e, p.stunTrait);
+            procChain(g, p.tx, p.ty, p.dmg, p.chain, p.pierce, e.id);
+          } else {
+            g.events.push({ t: "whiff", x: p.tx, y: p.ty });
+          }
+        }
+      } else {
+        p.x += (dx / L) * step; p.y += (dy / L) * step;
+      }
+    }
+    g.projectiles = g.projectiles.filter(p => !p.done);
+
+    // 塔与弹道造成的死亡在本步内出列，保证步进后状态干净
+    g.enemies = g.enemies.filter(e => !e.dead && !e.leaked);
+
+    // --- 波次结算 ---
+    if (g.phase === "wave" && g.buildQueue.length === 0 && g.enemies.length === 0) {
+      g.gold += g.waveBonus; g.stats.goldEarned += g.waveBonus;
+      g.qi += 2 + Math.floor(g.wave / 3);
+      g.events.push({ t: "waveClear", n: g.wave, bonus: g.waveBonus });
+      g.wave++;
+      if (!g.endless && g.wave >= g.totalWaves) { g.phase = "win"; g.events.push({ t: "win" }); }
+      else { g.phase = "build"; g.autoT = 14; }
+    }
+    return g.events;
+  }
+
+  function leak(g, e) {
+    e.leaked = true;
+    g.lives -= e.leakDamage; g.leaked++;
+    g.events.push({ t: "leak", x: foePos(g, e)[0], y: foePos(g, e)[1], dmg: e.leakDamage });
+    if (g.lives <= 0) { g.lives = 0; g.phase = "over"; g.events.push({ t: "lose" }); }
+  }
+
+  // 升级伤害/速度（含境界 ×1.25^realm、剑意 ×1.12）
+  function towerDmg(t) {
+    const T = stats(t);
+    if (!T) return 0;
+    let d = T.dmg * Math.pow(1.45, t.lvl - 1) * Math.pow(1.25, t.realm || 0);
+    if (t.traits.includes("jianyi")) d *= 1.12;
+    return d;
+  }
+  const hasT = (t, k) => t.traits && t.traits.includes(k);
+
+  // ---------- 特殊机制结算（融合阵） ----------
+  function applyDot(e, dot, tw) {
+    if (!dot) return;
+    e.burnDps = Math.max(e.burnDps, dot.dps);
+    e.burnT = Math.max(e.burnT, dot.dur);
+    if (tw) e.dotTw = tw;
+  }
+  function procStun(g, e, stun) {
+    if (!stun) return;
+    if (g.rng() < stun.chance) { e.stunT = Math.max(e.stunT, stun.dur); g.events.push({ t: "stun", x: foePos(g, e)[0], y: foePos(g, e)[1] }); }
+  }
+  function procChain(g, fromX, fromY, dmg, chain, pierce, excludeId) {
+    if (!chain || chain.n <= 0) return;
+    let cx = fromX, cy = fromY;
+    const hit = new Set([excludeId]);
+    for (let i = 0; i < chain.n; i++) {
+      let best = null, bd = 1e9;
+      for (const e of g.enemies) {
+        if (e.dead || hit.has(e.id)) continue;
+        const [ex, ey] = foePos(g, e);
+        const dd = Math.hypot(ex - cx, ey - cy);
+        if (dd < 130 && dd < bd) { bd = dd; best = e; }
+      }
+      if (!best) break;
+      hit.add(best.id);
+      const [ex, ey] = foePos(g, best);
+      g.events.push({ t: "chain", x: cx, y: cy, tx: ex, ty: ey, ele: "thunder" });
+      hitEnemy(g, best, dmg * chain.mul, { pierce, ele: "thunder" });
+      cx = ex; cy = ey;
+    }
+  }
+
+  // ---------- 曲线检查导出（td_curve_check.py 的输入格式；1 tile = 20px） ----------
+  const TILE = 20; // px per tile
+  function curveSpec() {
+    return {
+      start_gold: 120,
+      tower: { cost: 40, dps: 20 },          // 参考塔=御剑（最便宜基准）
+      kill_zone: 12,                          // 130px 射程贴路 45px ≈ 244px ≈ 12 tiles
+      efficiency: 0.55,
+      waves: WAVES.map(w => ({
+        clear_bonus: w.bonus,
+        groups: w.groups.map(grp => {
+          const F = FOES[grp.type];
+          return {
+            hp: Math.round(F.hp * w.hpMul),
+            count: grp.count,
+            speed: +(F.spd * w.spdMul / TILE).toFixed(2),
+            spacing: grp.spacing,
+            bounty: bountyOf(F, w.n),
+            armor: F.armor,
+          };
+        }),
+      })),
+    };
+  }
+  // 赏金随波次的增长（收入曲线与 HP 曲线复利对冲）
+  function bountyOf(e, waveN) { return Math.round(e.bounty * (1 + waveN * 0.03)); }
+
+  // ---------- 导出 ----------
+  const Core = {
+    MAP, PATH, GATE, SPAWN, PLEN, segs, posAt, pathNormal, pathDistTo, flyPos, FLY_LEN,
+    PAL, TOWERS, BASE_KEYS, FOES, WAVES, HP_GROWTH,
+    createGame, canPlace, placeTower, spawnFoe, startWave, wavePreview, gameStep,
+    acquire, towerRange, towerDmg, foePos, hitEnemy, TOWER_R, curveSpec, bountyOf,
+    upgradeTower, sellTower, setTargetMode,
+    FUSIONS, getFusion, CODEX_ALL, canFuse, fuseTowers, codexList, radiusOf, FUSE_DIST,
+    REALMS, TRIB_FAIL, TRIB_COST, TRAITS, TRAIT_KEYS, attemptTribulation,
+    endlessWave, startEndless, makeSave, recordWave, SAVE_KEY,
+  };
+  if (typeof module !== "undefined" && module.exports) module.exports = Core;
+  else global.Core = Core;
+
+})(typeof window !== "undefined" ? window : globalThis);
+
+</script>
+<script>
+"use strict";
+/* ================= 修仙守山 · 渲染层 =================
+ * 只读 Core 状态 + 事件流；全部程序化水墨绘制，零外部素材。
+ * 分块：FX 粒子 / BG 氛围 / FOE 妖兽 / TOWER 阵法 / PROJ 弹道 / UI / INPUT / AUDIO
+ */
+const C = window.Core;
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+const INK = "#2b2620", RED = "#9e2b25", CYAN = "#3d6b6b", GOLD = "#a8842c", GREEN = "#5a6b3d", PURPLE = "#5d3d6b", PAPER = "#e8e0ce";
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+
+/* ---------------- 音效（WebAudio 程序化） ---------------- */
+const AudioFX = (() => {
+  let ac = null, master = null, on = true, windNode = null;
+  function ensure() {
+    if (ac) return true;
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createGain(); master.gain.value = 0.5; master.connect(ac.destination);
+      startWind(); scheduleQin();
+      return true;
+    } catch (e) { return false; }
+  }
+  function env(g, t0, a, d, peak) { g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + a + d); }
+  function tone(freq, type, a, d, peak, when, slide) {
+    if (!ac || !on) return;
+    const t0 = (when || ac.currentTime);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, slide), t0 + a + d);
+    env(g, t0, a, d, peak); o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t0 + a + d + .05);
+  }
+  function noise(dur, peak, hp, when) {
+    if (!ac || !on) return;
+    const t0 = when || ac.currentTime;
+    const len = Math.floor(ac.sampleRate * dur), buf = ac.createBuffer(1, len, ac.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = hp ? "highpass" : "lowpass"; f.frequency.value = hp || 900;
+    const g = ac.createGain(); env(g, t0, 0.005, dur, peak);
+    src.connect(f); f.connect(g); g.connect(master); src.start(t0);
+  }
+  // 环境风（低通噪声缓慢起伏）
+  function startWind() {
+    const len = ac.sampleRate * 3, buf = ac.createBuffer(1, len, ac.sampleRate);
+    const ch = buf.getChannelData(0);
+    let v = 0;
+    for (let i = 0; i < len; i++) { v += (Math.random() * 2 - 1) * .02; v *= .995; ch[i] = v; }
+    const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+    const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 420;
+    windNode = ac.createGain(); windNode.gain.value = .05;
+    src.connect(f); f.connect(windNode); windNode.connect(master); src.start();
+  }
+  // 随机五声音阶古琴拨弦（宫商角徵羽）
+  const PENTA = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3];
+  function scheduleQin() {
+    if (!ac) return;
+    const next = 4000 + Math.random() * 8000;
+    setTimeout(() => {
+      if (on && ac.state === "running") {
+        const f = PENTA[Math.floor(Math.random() * PENTA.length)] / (Math.random() < .3 ? 2 : 1);
+        tone(f, "triangle", .006, 2.2, .07);
+        tone(f * 2, "sine", .004, 1.2, .02);
+      }
+      scheduleQin();
+    }, next);
+  }
+  return {
+    ensure, get on() { return on; },
+    toggle() { on = !on; if (master) master.gain.value = on ? .5 : 0; return on; },
+    sword() { tone(880, "sawtooth", .004, .09, .06, null, 320); },
+    fire() { noise(.25, .12, 500); tone(140, "sine", .01, .3, .1, null, 60); },
+    ice() { tone(1400, "sine", .005, .18, .05); tone(1900, "sine", .005, .12, .03); },
+    thunder() { noise(.5, .3); tone(70, "sine", .005, .5, .25, null, 40); },
+    hit() { noise(.05, .05, 2000); },
+    kill() { tone(220, "triangle", .005, .2, .08, null, 110); noise(.12, .06, 800); },
+    leak() { tone(180, "square", .01, .4, .12, null, 90); noise(.3, .1); },
+    fuse() { tone(523, "sine", .01, .8, .1); tone(784, "sine", .01, 1.1, .08, ac ? ac.currentTime + .12 : 0); tone(1046, "sine", .01, 1.4, .06, ac ? ac.currentTime + .24 : 0); },
+    tribWin() { tone(392, "sine", .02, 1.2, .12); tone(587, "sine", .02, 1.5, .1, ac ? ac.currentTime + .15 : 0); noise(.4, .08); },
+    tribFail() { tone(160, "sawtooth", .02, .7, .1, null, 60); noise(.4, .12, 300); },
+    wave() { tone(196, "sine", .05, 1.8, .12); tone(294, "sine", .04, 1.6, .08, ac ? ac.currentTime + .2 : 0); },
+    win() { [523, 659, 784, 1046].forEach((f, i) => tone(f, "sine", .02, 1.2, .1, ac ? ac.currentTime + i * .18 : 0)); },
+    lose() { [330, 262, 196, 147].forEach((f, i) => tone(f, "sawtooth", .03, 1.0, .09, ac ? ac.currentTime + i * .25 : 0)); },
+    build() { noise(.08, .07, 1200); tone(660, "sine", .005, .1, .05); },
+  };
+})();
+
+/* ---------------- 游戏状态 ---------------- */
+let g = C.createGame();
+let selKey = null;          // 选中的待布阵型
+let hoverTower = null, selTower = null;
+let dragTower = null, dragDX = 0, dragDY = 0;   // 拖拽融合
+let dragOX = 0, dragOY = 0;                     // 拖拽原位（未融合弹回）
+let mouseX = -99, mouseY = -99;
+let speed = 1;
+let shake = 0;              // 震屏强度
+let floaters = [];          // 飘字
+let codexSaved = JSON.parse(localStorage.getItem(C.SAVE_KEY) || "null");
+let newCodexKeys = new Set(((codexSaved && codexSaved.codex) || {}));  // 本会话已见
+
+/* ---------------- 粒子系统 ---------------- */
+const parts = [];
+function P(x, y, o) { if (parts.length < 900) parts.push(Object.assign({ x, y, vx: 0, vy: 0, life: 1, decay: 1.6, r: 2, col: INK, type: "dot", grav: 0 }, o)); }
+function stepParts(dt) {
+  for (const p of parts) {
+    p.life -= dt * p.decay;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += p.grav * dt;
+    if (p.spin) p.a += p.spin * dt;
+  }
+  for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1);
+}
+function drawParts() {
+  for (const p of parts) {
+    ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+    if (p.type === "dot") { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.4 + 0.6 * p.life), 0, TAU); ctx.fill(); }
+    else if (p.type === "shard") { // 冰晶/墨片
+      ctx.translate(p.x, p.y); ctx.rotate(p.a || 0);
+      ctx.fillStyle = p.col; ctx.fillRect(-p.r, -p.r * .4, p.r * 2, p.r * .8);
+    } else if (p.type === "ring") { // 冲击环
+      ctx.strokeStyle = p.col; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (2 - p.life * 1.4), 0, TAU); ctx.stroke();
+    } else if (p.type === "ink") { // 墨晕
+      ctx.fillStyle = p.col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + (1 - p.life) * 2.2), 0, TAU); ctx.fill();
+    } else if (p.type === "glow") {
+      const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.4);
+      gr.addColorStop(0, p.col); gr.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2.4, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+// 事件驱动的爆发特效
+function burstKill(x, y, big) {
+  const n = big ? 42 : 14;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * TAU, sp = (big ? 130 : 70) * (0.3 + Math.random());
+    P(x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 20, r: big ? 3.6 : 2.4, col: "rgba(43,38,32,.8)", decay: 1.4, grav: 120, life: .8 + Math.random() * .5 });
+  }
+  P(x, y, { type: "ink", r: big ? 16 : 8, col: "rgba(43,38,32,.30)", decay: 1.8 });
+  P(x, y, { type: "ring", r: big ? 26 : 12, col: "rgba(43,38,32,.5)", decay: 2.2 });
+  if (big) { shake = Math.max(shake, 9); }
+}
+function burstHit(x, y, ele) {
+  const cols = { metal: RED, fire: "#c45a28", ice: CYAN, thunder: GOLD, wind: GREEN, qi: GOLD };
+  const col = cols[ele] || INK;
+  for (let i = 0; i < 4; i++) {
+    const a = Math.random() * TAU, sp = 40 + Math.random() * 60;
+    P(x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 1.6, col, decay: 2.4 });
+  }
+}
+function floatText(x, y, text, col, size) {
+  floaters.push({ x, y, text, col: col || "#a8842c", size: size || 13, life: 1 });
+}
+
+/* ---------------- 背景（程序化水墨氛围） ---------------- */
+// 固定随机装饰（每局同构）
+const R01 = (i) => { const x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); };
+const decor = { grass: [], pines: [], rocks: [] };
+(function initDecor() {
+  // 山道两侧苔点/枯草
+  for (let i = 0; i < 130; i++) {
+    const d = R01(i) * C.PLEN, side = R01(i + 99) < .5 ? 1 : -1;
+    const off = 40 + R01(i + 7) * 90;
+    const [x, y] = C.posAt(d), n = C.pathNormal(d);
+    decor.grass.push({ x: x + n[0] * off * side, y: y + n[1] * off * side, s: 3 + R01(i + 3) * 5, lean: (R01(i + 11) - .5) * .8, i });
+  }
+  // 弯角松（路径折点附近）
+  for (let i = 1; i < C.PATH.length - 1; i++) {
+    const a = C.PATH[i];
+    const n = C.pathNormal(0);
+    decor.pines.push({ x: a[0] + (R01(i * 3) - .5) * 160, y: a[1] + (R01(i * 5 + 2) - .5) * 120, s: .7 + R01(i * 7) * .7, i });
+  }
+  // 散石
+  for (let i = 0; i < 16; i++) {
+    const d = R01(i + 500) * C.PLEN, side = R01(i + 600) < .5 ? 1 : -1;
+    const off = 55 + R01(i + 700) * 110;
+    const [x, y] = C.posAt(d), n = C.pathNormal(d);
+    decor.rocks.push({ x: x + n[0] * off * side, y: y + n[1] * off * side, s: 4 + R01(i + 800) * 7, i });
+  }
+})();
+let geese = []; // 雁阵
+(function initGeese() {
+  for (let k = 0; k < 3; k++) geese.push({ x: -200 - k * 500, y: 60 + k * 38, sp: 14 + k * 5, n: 4 + Math.floor(R01(k) * 4), ph: R01(k + 50) * TAU });
+})();
+function drawBG(t) {
+  // 底色渐变宣纸
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#ece4d2"); bg.addColorStop(.7, "#e8e0ce"); bg.addColorStop(1, "#e2d7c0");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // 远山三层
+  ctx.save();
+  const mts = [
+    { a: .07, yo: 0, k: 1.15, dy: 0 }, { a: .10, yo: 30, k: .85, dy: 26 }, { a: .16, yo: 74, k: .6, dy: 55 }
+  ];
+  mts.forEach((m, mi) => {
+    ctx.globalAlpha = m.a; ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.moveTo(-20, 160 + m.yo);
+    for (let x = -20; x <= W + 20; x += 60) {
+      const h = Math.sin(x * .008 * m.k + mi * 2.4) * 66 + Math.sin(x * .021 + mi) * 22;
+      ctx.quadraticCurveTo(x + 30, 60 + m.yo - h, x + 60, 130 + m.yo - h * .4);
+    }
+    ctx.lineTo(W + 20, -40); ctx.lineTo(-20, -40); ctx.fill();
+  });
+  // 云雾带（缓移半透明）
+  for (let i = 0; i < 3; i++) {
+    const y = 70 + i * 60, x0 = ((t * (6 + i * 3)) % (W + 400)) - 200;
+    ctx.globalAlpha = .05 + i * .02; ctx.fillStyle = PAPER;
+    ctx.beginPath(); ctx.ellipse(x0, y, 180, 14, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse((x0 + 320) % (W + 200) - 100, y + 18, 150, 11, 0, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+  // 雁阵
+  ctx.save(); ctx.fillStyle = "rgba(43,38,32,.55)";
+  for (const flock of geese) {
+    for (let i = 0; i < flock.n; i++) {
+      const gx = flock.x + i * 14, gy = flock.y + Math.sin(flock.ph + t * 2 + i) * 2 + i * 4;
+      const fl = Math.sin(t * 6 + i * 1.3) * 3;
+      ctx.beginPath(); ctx.moveTo(gx - 5, gy + fl); ctx.quadraticCurveTo(gx, gy - 2, gx + 5, gy + fl);
+      ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(43,38,32,.5)"; ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // 苔点/枯草（山道两侧）
+  ctx.save();
+  for (const gr of decor.grass) {
+    ctx.globalAlpha = .35;
+    ctx.strokeStyle = INK; ctx.lineWidth = 1;
+    for (let b = 0; b < 3; b++) {
+      const bx = gr.x + (b - 1) * 2.4;
+      ctx.beginPath(); ctx.moveTo(bx, gr.y);
+      ctx.quadraticCurveTo(bx + gr.lean * 4, gr.y - gr.s * .6, bx + gr.lean * 7, gr.y - gr.s);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = .25;
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(gr.x + 3, gr.y + 1, 1.2, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+  // 散石
+  ctx.save();
+  for (const rk of decor.rocks) {
+    ctx.globalAlpha = .3; ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.ellipse(rk.x, rk.y, rk.s, rk.s * .65, rk.i, 0, TAU); ctx.fill();
+    ctx.globalAlpha = .15;
+    ctx.beginPath(); ctx.ellipse(rk.x + rk.s * .3, rk.y + rk.s * .2, rk.s * .5, rk.s * .3, rk.i, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+  drawPath(t);
+  drawPines(t);
+  drawGate(t);
+  drawSpawnVortex(t);
+}
+// 山道：多层笔触 + 石阶 + 飞白
+function drawPath(t) {
+  const pathThrough = () => {
+    ctx.beginPath(); ctx.moveTo(C.PATH[0][0], C.PATH[0][1]);
+    for (let i = 1; i < C.PATH.length; i++) ctx.lineTo(C.PATH[i][0], C.PATH[i][1]);
+  };
+  // 暖底色
+  ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  const layers = [
+    [46, "rgba(160,140,105,.10)"], [36, "rgba(90,80,60,.08)"],
+    [26, "rgba(43,38,32,.10)"], [16, "rgba(43,38,32,.32)"], [7, "rgba(30,26,22,.55)"]
+  ];
+  for (const [w, col] of layers) { pathThrough(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); }
+  // 飞白边缘（双排错位枯笔）
+  ctx.setLineDash([2, 15]); ctx.lineWidth = 1.4; ctx.strokeStyle = "rgba(43,38,32,.3)";
+  pathThrough(); ctx.stroke();
+  ctx.lineDashOffset = 8; ctx.stroke();
+  ctx.setLineDash([]);
+  // 石阶点（等距墨点，明暗错落）
+  for (let d = 30; d < C.PLEN - 20; d += 34) {
+    const [x, y] = C.posAt(d), n = C.pathNormal(d);
+    const side = (Math.floor(d / 34) % 2) ? 6 : -6;
+    ctx.fillStyle = `rgba(43,38,32,${.18 + (d / C.PLEN) * .1})`;
+    ctx.beginPath(); ctx.ellipse(x + n[0] * side, y + n[1] * side, 3.4, 2.1, Math.atan2(n[1], n[0]), 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+// 松树剪影（弯角处）
+function drawPines(t) {
+  ctx.save();
+  for (const p of decor.pines) {
+    const sway = Math.sin(t * .7 + p.i) * 1.5;
+    ctx.strokeStyle = "rgba(43,38,32,.5)"; ctx.lineWidth = 2.4 * p.s; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    ctx.quadraticCurveTo(p.x + 4 * p.s + sway, p.y - 16 * p.s, p.x + 2 * p.s + sway, p.y - 30 * p.s);
+    ctx.stroke();
+    // 针叶团（三叠）
+    ctx.fillStyle = "rgba(43,38,32,.42)";
+    for (let k = 0; k < 3; k++) {
+      const ly = p.y - 14 * p.s - k * 9 * p.s, lw = (16 - k * 4) * p.s;
+      ctx.beginPath();
+      ctx.moveTo(p.x + 2 * p.s - lw, ly);
+      ctx.quadraticCurveTo(p.x + 2 * p.s, ly - 10 * p.s, p.x + 2 * p.s + lw, ly);
+      ctx.quadraticCurveTo(p.x + 2 * p.s, ly + 3 * p.s, p.x + 2 * p.s - lw, ly);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+// 山门牌坊（终点）
+function drawGate(t) {
+  const [gx, gy] = C.GATE;
+  ctx.save(); ctx.translate(gx, gy);
+  const hurt = (g.lives <= 3);
+  const pulse = hurt ? (Math.sin(t * 6) * .5 + .5) : 0;
+  // 牌坊柱
+  ctx.fillStyle = hurt ? `rgba(158,43,37,${.75 + pulse * .25})` : "rgba(158,43,37,.85)";
+  ctx.fillRect(-26, -46, 6, 50); ctx.fillRect(20, -46, 6, 50);
+  // 匾额
+  ctx.fillRect(-26, -52, 52, 14);
+  ctx.fillStyle = PAPER; ctx.font = "bold 11px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("星宗山门", 0, -44.5);
+  // 灯笼（摆动）
+  for (const sx of [-30, 30]) {
+    ctx.save(); ctx.translate(sx, -34);
+    ctx.rotate(Math.sin(t * 2.2 + sx) * .18);
+    ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 7); ctx.stroke();
+    ctx.fillStyle = RED; ctx.beginPath(); ctx.ellipse(0, 13, 4.4, 6, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(255,240,200,.9)"; ctx.beginPath(); ctx.arc(0, 13, 1.6, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // 地面朱印
+  ctx.fillStyle = "rgba(158,43,37,.8)"; ctx.fillRect(-11, -11, 22, 22);
+  ctx.fillStyle = PAPER; ctx.font = "13px serif"; ctx.fillText("宗", 0, 1);
+  ctx.restore();
+}
+// 妖气漩涡（起点）
+function drawSpawnVortex(t) {
+  const [sx, sy] = C.SPAWN;
+  ctx.save(); ctx.translate(sx + 20, sy);
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    const ro = t * (0.8 + i * .3);
+    for (let a = 0; a < 7; a += .3) {
+      const rr = 3 + a * 3.2, an = ro - a + i * 1.6;
+      const px = Math.cos(an) * rr, py = Math.sin(an) * rr * .55;
+      a === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = `rgba(93,61,107,${.4 - i * .07})`; ctx.lineWidth = 2.2 - i * .4; ctx.stroke();
+  }
+  // 紫雾
+  for (let i = 0; i < 3; i++) {
+    ctx.globalAlpha = .12 + Math.sin(t * 2 + i * 2) * .05;
+    ctx.fillStyle = PURPLE;
+    ctx.beginPath(); ctx.arc(10 + i * 8, Math.sin(t + i) * 5, 14 - i * 3, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---------------- 妖兽绘制（7 种剪影 + 状态特效） ---------------- */
+function drawFoe(e, t) {
+  const [x, y] = C.foePos(g, e);
+  const wob = Math.sin(t * 9 + e.wob);
+  ctx.save(); ctx.translate(x, y);
+  const fly = e.fly;
+  if (fly) { // 飞舟投影
+    ctx.save(); ctx.globalAlpha = .18; ctx.fillStyle = INK;
+    ctx.beginPath(); ctx.ellipse(6, 26, 12, 4, 0, 0, TAU); ctx.fill(); ctx.restore();
+    ctx.translate(0, Math.sin(t * 2.4 + e.wob) * 2.6 - 10);
+  }
+  ctx.globalAlpha = .92; ctx.fillStyle = INK;
+  const r = e.r;
+  const frozen = e.slowT > 0, stunned = e.stunT > 0;
+  switch (e.type) {
+    case "grunt": { // 四足兽
+      const b = wob * .4;
+      ctx.beginPath(); ctx.ellipse(0, b * .4, r, r * .72, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(r * .7, b * .4 - 3); ctx.quadraticCurveTo(r * 1.7, b * .4 - 9, r * 1.9, b * .4 - 2);
+      ctx.quadraticCurveTo(r * 1.4, b * .4 + 2, r * .7, b * .4 + 3); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-r * .5, -r * .6 + b * .3, r * .5, r * .42, -.5, 0, TAU); ctx.fill();
+      for (const dx of [-3, 3]) { ctx.beginPath(); ctx.moveTo(dx, r * .6); ctx.quadraticCurveTo(dx * 1.4, r * 1.5 + (dx > 0 ? b * 2 : -b * 2), dx * .8, r * 1.8); ctx.strokeStyle = "rgba(43,38,32,.85)"; ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(-r * .85, -r * .75); ctx.lineTo(-r * 1.15, -r * 1.25); ctx.lineTo(-r * .6, -r * 1.05); ctx.fill(); // 耳
+      break;
+    }
+    case "fox": { // 赤瞳狐：流线低伏
+      const b = wob * .6;
+      // 速度残影
+      ctx.save(); ctx.globalAlpha = .18;
+      ctx.beginPath(); ctx.ellipse(10, b * .3, r * .9, r * .55, 0, 0, TAU); ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.moveTo(r * 1.2, b * .2);
+      ctx.quadraticCurveTo(0, -r * .8 + b * .5, -r * 1.4, b * .2);
+      ctx.quadraticCurveTo(0, r * .75 + b * .3, r * 1.2, b * .2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-r * 1.1, 0); ctx.quadraticCurveTo(-r * 2.1, -r * .9 + b, -r * 2.5, b * .5);
+      ctx.quadraticCurveTo(-r * 1.8, b * .8, -r * 1.2, r * .5); ctx.fill(); // 长尾
+      ctx.beginPath(); ctx.moveTo(-r * .9, -r * .4); ctx.lineTo(-r * 1.3, -r * 1.3); ctx.lineTo(-r * .45, -r * .85); ctx.fill(); // 尖耳
+      for (const dx of [-2, 2]) { ctx.strokeStyle = "rgba(43,38,32,.8)"; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(dx * .6 * r, r * .5); ctx.lineTo(dx * .5 * r, r * 1.3 + b * 2); ctx.stroke(); }
+      break;
+    }
+    case "scale": { // 鳞甲妖：宽体+背甲
+      const b = wob * .25;
+      ctx.beginPath(); ctx.ellipse(0, b * .4, r * 1.2, r * .95, 0, 0, TAU); ctx.fill();
+      // 甲片弧纹
+      ctx.strokeStyle = "rgba(232,224,206,.4)"; ctx.lineWidth = 1.1;
+      for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(r * .1, b * .4 + r * .5, i * r * .32, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
+      ctx.beginPath(); ctx.ellipse(-r * 1.05, -r * .35 + b * .3, r * .42, r * .34, .3, 0, TAU); ctx.fill(); // 首
+      for (const dx of [-4, -1.5, 1.5, 4]) { ctx.strokeStyle = "rgba(43,38,32,.85)"; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(dx * .28 * r, r * .8); ctx.lineTo(dx * .3 * r, r * 1.5); ctx.stroke(); }
+      break;
+    }
+    case "boat": { // 御空飞舟
+      ctx.save();
+      // 底云
+      ctx.globalAlpha = .5; ctx.fillStyle = PAPER;
+      ctx.beginPath(); ctx.ellipse(0, r * .9, r * 1.3, r * .4, 0, 0, TAU); ctx.fill();
+      ctx.globalAlpha = .92; ctx.fillStyle = INK;
+      // 船体
+      ctx.beginPath(); ctx.moveTo(-r * 1.3, 0); ctx.quadraticCurveTo(0, r * .75, r * 1.3, 0);
+      ctx.quadraticCurveTo(0, r * .2, -r * 1.3, 0); ctx.fill();
+      // 桅+帆
+      ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(0, -r * 1.7); ctx.stroke();
+      ctx.fillStyle = "rgba(93,61,107,.8)";
+      ctx.beginPath(); ctx.moveTo(1, -r * 1.6); ctx.quadraticCurveTo(r * 1.1, -r * 1.2, r * .8, -r * .3);
+      ctx.quadraticCurveTo(r * .4, -r * .7, 1, -r * .5); ctx.fill();
+      break;
+    }
+    case "wolf": { // 妖狼：低伏窄身
+      const b = wob * .8;
+      ctx.beginPath(); ctx.ellipse(0, b * .3, r * 1.25, r * .5, .08, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-r * 1.05, -r * .3 + b * .4, r * .45, r * .32, .4, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-r * 1.2, -r * .5); ctx.lineTo(-r * 1.45, -r * 1.05); ctx.lineTo(-r * .85, -r * .8); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(r * 1.1, b * .2); ctx.quadraticCurveTo(-r * .5, -r * 1.1, -r * 1.6, -r * .2 + b); ctx.quadraticCurveTo(-r * .5, r * .4, r * 1.1, b * .4); ctx.fill(); // 尾
+      for (let i = 0; i < 4; i++) { const lx = -r * .7 + i * r * .45; ctx.strokeStyle = "rgba(43,38,32,.85)"; ctx.lineWidth = 1.7; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(lx, r * .4); ctx.lineTo(lx + Math.sin(t * 12 + i) * 3, r * 1.2); ctx.stroke(); }
+      break;
+    }
+    case "treant": { // 再生木妖：树干人形
+      const b = wob * .2;
+      ctx.strokeStyle = INK; ctx.lineWidth = r * .55; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(0, r); ctx.quadraticCurveTo(b * 2, 0, 0, -r * .7); ctx.stroke();
+      // 枝杈臂
+      ctx.lineWidth = r * .22;
+      ctx.beginPath(); ctx.moveTo(-r * .15, -r * .1); ctx.quadraticCurveTo(-r * 1.2, -r * .5, -r * 1.3, b - r * .1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(r * .15, -r * .1); ctx.quadraticCurveTo(r * 1.2, -r * .5, r * 1.3, -b - r * .1); ctx.stroke();
+      // 叶团
+      ctx.fillStyle = "rgba(90,107,61,.75)";
+      for (const [lx, ly, lr] of [[0, -r * 1.15, r * .75], [-r * .9, -r * .5, r * .5], [r * .9, -r * .5, r * .5]]) {
+        ctx.beginPath(); ctx.arc(lx, ly + b, lr, 0, TAU); ctx.fill();
+      }
+      // 再生绿雾
+      if (e.hp < e.maxhp) {
+        ctx.globalAlpha = .3 + Math.sin(t * 3) * .1; ctx.fillStyle = GREEN;
+        ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, TAU); ctx.fill();
+      }
+      break;
+    }
+    case "boss": { // 千年妖王
+      const b = wob * .3;
+      // 妖气环
+      ctx.save(); ctx.globalAlpha = .3;
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = PURPLE; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(0, b * .3, r * (1.4 + i * .35), r * (.5 + i * .18), Math.sin(t * .8 + i) * .2, 0, TAU); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = INK;
+      ctx.beginPath(); ctx.ellipse(0, b * .3, r * 1.25, r * .95, 0, 0, TAU); ctx.fill(); // 巨躯
+      ctx.beginPath(); ctx.ellipse(-r * .95, -r * .55 + b * .3, r * .55, r * .45, .3, 0, TAU); ctx.fill(); // 首
+      // 双角
+      ctx.beginPath(); ctx.moveTo(-r * 1.2, -r * .9); ctx.quadraticCurveTo(-r * 1.8, -r * 1.9, -r * 1.0, -r * 1.6);
+      ctx.quadraticCurveTo(-r * 1.05, -r * 1.2, -r * .95, -r * .95); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-r * .6, -r * .95); ctx.quadraticCurveTo(-r * .3, -r * 2.0, -r * .1, -r * 1.5);
+      ctx.quadraticCurveTo(-r * .4, -r * 1.15, -r * .55, -r * .95); ctx.fill();
+      // 鬃毛锯齿
+      for (let i = 0; i < 5; i++) {
+        const mx = -r * .3 + i * r * .34;
+        ctx.beginPath(); ctx.moveTo(mx, -r * .8 + b); ctx.lineTo(mx + r * .17, -r * 1.35 + b); ctx.lineTo(mx + r * .34, -r * .8 + b); ctx.fill();
+      }
+      for (const dx of [-6, 0, 6]) { ctx.strokeStyle = "rgba(43,38,32,.9)"; ctx.lineWidth = 3.6; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(dx * .22 * r, r * .8); ctx.lineTo(dx * .3 * r, r * 1.5 + b * 2); ctx.stroke(); }
+      break;
+    }
+  }
+  // 朱砂点睛（多目：狐1 wolf1 boss2）
+  ctx.globalAlpha = 1; ctx.fillStyle = e.hitT > 0 ? "#fff" : RED;
+  const eyes = e.type === "boss" ? [[-r * 1.05, -r * .62], [-r * .72, -r * .68]] : e.type === "boat" ? [] : [[-e.r * .68, -e.r * .7]];
+  for (const [ex, ey] of eyes) { ctx.beginPath(); ctx.arc(ex, ey, e.type === "boss" ? 2.2 : 1.5, 0, TAU); ctx.fill(); }
+  // 受击白闪
+  if (e.hitT > 0) { ctx.globalAlpha = e.hitT * 2.4; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(0, 0, r * 1.15, 0, TAU); ctx.fill(); }
+  // 减速霜蓝
+  if (frozen) {
+    ctx.globalAlpha = .3; ctx.fillStyle = CYAN;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, TAU); ctx.fill();
+    ctx.globalAlpha = .8; ctx.strokeStyle = "#bfe3e0"; ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) { const a = e.wob + i * 2.1; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .5, Math.sin(a) * r * .5); ctx.lineTo(Math.cos(a) * r * 1.1, Math.sin(a) * r * 1.1); ctx.stroke(); }
+  }
+  ctx.restore();
+  // 定身冰晶（在 restore 后画避免随体型变形）
+  if (stunned) {
+    ctx.save(); ctx.translate(x, y); ctx.globalAlpha = .85;
+    ctx.strokeStyle = "#9fd8d3"; ctx.lineWidth = 1.4;
+    for (let i = 0; i < 4; i++) {
+      const a = i * TAU / 4 + .4, rr = e.r * 1.3;
+      ctx.beginPath(); ctx.moveTo(0, -4);
+      ctx.lineTo(Math.cos(a) * rr * .3, Math.sin(a) * rr * .3 - 4);
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // 燃烧火点
+  if (e.burnT > 0 && Math.random() < .3) {
+    P(x + (Math.random() - .5) * e.r, y - Math.random() * e.r, { vy: -30 - Math.random() * 20, r: 1.6, col: "#c45a28", decay: 2 });
+  }
+  // 血条墨痕（受损才显示；BOSS 大血条）
+  if (e.hp < e.maxhp - .5) {
+    const bw = e.type === "boss" ? 46 : 22, yy = y - e.r - (fly ? 26 : 11);
+    ctx.fillStyle = "rgba(43,38,32,.25)"; ctx.fillRect(x - bw / 2, yy, bw, 3.4);
+    const ratio = Math.max(0, e.hp / e.maxhp);
+    ctx.fillStyle = e.type === "boss" ? RED : INK;
+    ctx.fillRect(x - bw / 2, yy, bw * ratio, 3.4);
+    // 墨痕末端须
+    ctx.fillStyle = "rgba(43,38,32,.3)";
+    ctx.fillRect(x - bw / 2 + bw * ratio, yy + 1, 2.5, 1.4);
+  }
+}
+
+/* ---------------- 阵法绘制（6 基础 + 16 融合） ---------------- */
+const ELE_COL = { metal: RED, fire: "#c45a28", ice: CYAN, thunder: GOLD, wind: GREEN, qi: GOLD, blend: PURPLE };
+function towerColors(t) {
+  const T = C.TOWERS[t.type];
+  if (T) return [T.color, T.color];
+  const F = t.type.startsWith("zhenwu_") ? (C.TOWERS[t.type.slice(7)] || { color: INK }) : (C.FUSIONS[t.type] || { color: PURPLE });
+  return [F.color, GOLD];
+}
+function runeFor(ele, t) { // 属性符纹图形
+  ctx.save(); ctx.strokeStyle = arguments[2]; ctx.lineWidth = 1.4; ctx.lineCap = "round";
+  const R = arguments[3];
+  switch (ele) {
+    case "metal": for (let i = 0; i < 3; i++) { const a = t + i * TAU / 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .5, Math.sin(a) * R * .5); ctx.lineTo(Math.cos(a + .5) * R, Math.sin(a + .5) * R); ctx.stroke(); } break;
+    case "fire": for (let i = 0; i < 4; i++) { const a = t + i * TAU / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .4, Math.sin(a) * R * .4); ctx.quadraticCurveTo(Math.cos(a + .4) * R * .9, Math.sin(a + .4) * R * .9, Math.cos(a + .8) * R * .5, Math.sin(a + .8) * R * .5); ctx.stroke(); } break;
+    case "ice": for (let i = 0; i < 6; i++) { const a = t * .6 + i * TAU / 6; const px = Math.cos(a) * R, py = Math.sin(a) * R; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px * .55, py * .55); ctx.moveTo(px * .82 * Math.cos(.4) - py * .82 * Math.sin(.4), px * .82 * Math.sin(.4) + py * .82 * Math.cos(.4)); ctx.stroke(); } break;
+    case "thunder": for (let i = 0; i < 2; i++) { const a = t + i * Math.PI; ctx.beginPath(); let px = Math.cos(a) * R * .2, py = Math.sin(a) * R * .2; ctx.moveTo(px, py); for (let s = 1; s <= 3; s++) { const aa = a + (s % 2 ? .35 : -.35); px = Math.cos(aa) * R * s / 3; py = Math.sin(aa) * R * s / 3; ctx.lineTo(px, py); } ctx.stroke(); } break;
+    case "wind": for (let i = 0; i < 3; i++) { const a = t * 1.4 + i * TAU / 3; ctx.beginPath(); ctx.arc(0, 0, R * .75, a, a + 1.1); ctx.stroke(); } break;
+    case "qi": for (let i = 0; i < 5; i++) { const a = t * .8 + i * TAU / 5; ctx.beginPath(); ctx.arc(Math.cos(a) * R * .6, Math.sin(a) * R * .6, 1.6, 0, TAU); ctx.stroke(); } break;
+    default: for (let i = 0; i < 4; i++) { const a = t + i * TAU / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .4, Math.sin(a) * R * .4); ctx.lineTo(-Math.cos(a) * R * .4, -Math.sin(a) * R * .4); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+function drawTower(t, time) {
+  const [c1, c2] = towerColors(t);
+  const R = C.radiusOf(t);
+  const st = C.stats(t) || {};
+  const isF = t.kind === "fusion";
+  ctx.save(); ctx.translate(t.x, t.y);
+  // 选中/悬停范围圈
+  const showRange = (selTower === t || hoverTower === t || dragTower);
+  if (showRange && C.towerRange(t) > 0) {
+    ctx.setLineDash([4, 8]); ctx.strokeStyle = c1 + "66"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(0, 0, C.towerRange(t), 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha = .05; ctx.fillStyle = c1;
+    ctx.beginPath(); ctx.arc(0, 0, C.towerRange(t), 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+  }
+  // 底盘阴影
+  ctx.fillStyle = "rgba(43,38,32,.18)";
+  ctx.beginPath(); ctx.ellipse(2, 4, R * 1.05, R * .9, 0, 0, TAU); ctx.fill();
+  // 攻击反冲
+  const recoil = Math.max(0, (t.cd || 0) > (st.rate || 1) * .8 ? .15 : 0);
+  const scale = 1 + recoil;
+  ctx.scale(scale, scale);
+  // 符阵底盘
+  ctx.fillStyle = PAPER;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill();
+  ctx.strokeStyle = "rgba(43,38,32,.9)"; ctx.lineWidth = isF ? 3.6 : 3; ctx.stroke();
+  // 属性环（融合阵双环）
+  ctx.strokeStyle = c1; ctx.lineWidth = isF ? 2.4 : 2;
+  ctx.beginPath(); ctx.arc(0, 0, R - 5, 0, TAU); ctx.stroke();
+  if (isF) { ctx.strokeStyle = c2; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0, 0, R - 9, 0, TAU); ctx.stroke(); }
+  // 缓转符纹
+  runeFor(st.ele || "blend", t.spin, c1, R * .62);
+  // 聚灵/产灵阵：吸气粒子
+  if ((st.qiRate || st.qiPerSec) && Math.random() < .25) {
+    const a = Math.random() * TAU, d = R * (2 + Math.random() * 1.5);
+    P(t.x + Math.cos(a) * d, t.y + Math.sin(a) * d, { vx: -Math.cos(a) * 40, vy: -Math.sin(a) * 40, r: 1.4, col: GOLD, decay: 1.2 });
+  }
+  // 太极芯
+  ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, TAU); ctx.fillStyle = INK; ctx.fill();
+  ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(1.5, -1.5, 1.5, 0, TAU); ctx.fill();
+  // 等级星点（3 级为尖）
+  for (let i = 0; i < t.lvl; i++) {
+    const a = -Math.PI / 2 + (i - 1) * .5;
+    ctx.fillStyle = t.lvl === 3 ? RED : INK;
+    ctx.beginPath(); ctx.arc(Math.cos(a) * (R + 6), Math.sin(a) * (R + 6), 2, 0, TAU); ctx.fill();
+  }
+  // 境界光环（每境一圈金环）
+  for (let i = 0; i < (t.realm || 0); i++) {
+    ctx.strokeStyle = `rgba(168,132,44,${.5 - i * .12})`; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(0, 0, R + 3 + i * 4, 0, TAU); ctx.stroke();
+  }
+  // 词条角标（左下小点）
+  if (t.traits.length) {
+    ctx.fillStyle = CYAN;
+    ctx.beginPath(); ctx.arc(-R - 4, R - 2, 3, 0, TAU); ctx.fill();
+    ctx.fillStyle = PAPER; ctx.font = "bold 6px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(String(t.traits.length), -R - 4, R - 1);
+  }
+  // 拖拽中半透明
+  if (dragTower === t) ctx.globalAlpha = .6;
+  ctx.restore();
+  // 融合阵顶光
+  if (isF && Math.random() < .06) {
+    P(t.x + (Math.random() - .5) * 30, t.y - 8, { vy: -18, r: 1.8, col: "rgba(168,132,44,.8)", decay: .9 });
+  }
+}
+// 布阵预览（跟随鼠标）
+function drawPlacementGhost() {
+  if (!selKey || mouseX < 0) return;
+  const T = C.TOWERS[selKey];
+  const chk = C.canPlace(g, mouseX, mouseY, selKey);
+  const col = chk.ok ? T.color : RED;
+  ctx.save(); ctx.globalAlpha = .75;
+  // 范围预览
+  if (T.range > 0) { ctx.setLineDash([4, 8]); ctx.strokeStyle = col + "88"; ctx.beginPath(); ctx.arc(mouseX, mouseY, T.range, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
+  ctx.fillStyle = PAPER; ctx.strokeStyle = col; ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.arc(mouseX, mouseY, C.TOWER_R, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(mouseX, mouseY, C.TOWER_R - 5, 0, TAU); ctx.stroke();
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(mouseX, mouseY, 4, 0, TAU); ctx.fill();
+  if (!chk.ok) { ctx.fillStyle = RED; ctx.font = "12px serif"; ctx.textAlign = "center"; ctx.fillText(chk.why, mouseX, mouseY - 26); }
+  ctx.restore();
+}
+// 融合拖线：可融合目标高亮
+function drawFuseLinks() {
+  if (!dragTower) return;
+  const dt = dragTower;
+  for (const o of g.towers) {
+    if (o === dt) continue;
+    const chk = C.canFuse(g, dt.id, o.id);
+    if (chk.ok) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(168,132,44,.9)"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+      ctx.beginPath(); ctx.moveTo(dt.x, dt.y); ctx.lineTo(o.x, o.y); ctx.stroke(); ctx.setLineDash([]);
+      // 目标高亮环
+      ctx.strokeStyle = GOLD; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(o.x, o.y, C.radiusOf(o) + 6 + Math.sin(performance.now() / 150) * 2, 0, TAU); ctx.stroke();
+      // 融合名提示
+      ctx.fillStyle = GOLD; ctx.font = "12px serif"; ctx.textAlign = "center";
+      ctx.fillText(chk.fusion.name, (dt.x + o.x) / 2, (dt.y + o.y) / 2 - 12);
+      ctx.restore();
+    }
+  }
+}
+
+/* ---------------- 弹道特效 ---------------- */
+function drawProjectile(p) {
+  const ang = Math.atan2(p.ty - p.y, p.tx - p.x);
+  ctx.save(); ctx.translate(p.x, p.y);
+  switch (p.kind) {
+    case "sword": case "frostSword": case "thunderSword": case "fireSword": {
+      ctx.rotate(ang);
+      const main = p.kind === "frostSword" ? CYAN : p.kind === "thunderSword" ? GOLD : p.kind === "fireSword" ? "#c45a28" : RED;
+      // 拖尾
+      ctx.strokeStyle = main + "44"; ctx.lineWidth = 4; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(6, 0); ctx.stroke();
+      // 剑身
+      ctx.strokeStyle = main; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,252,240,.95)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.stroke();
+      // 剑尖光
+      ctx.fillStyle = "rgba(255,252,240,.9)";
+      ctx.beginPath(); ctx.arc(9, 0, 1.6, 0, TAU); ctx.fill();
+      break;
+    }
+    case "fire": {
+      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, 7);
+      gr.addColorStop(0, "#ffd9a0"); gr.addColorStop(.5, "#c45a28"); gr.addColorStop(1, "rgba(196,90,40,0)");
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill();
+      if (Math.random() < .5) P(p.x, p.y, { vy: -14, r: 1.5, col: "#c45a28", decay: 2.4 });
+      break;
+    }
+    case "bolt": { // 冰珠
+      ctx.fillStyle = CYAN; ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#bfe3e0"; ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) { const a = i * TAU / 3 + performance.now() / 300; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 2, Math.sin(a) * 2); ctx.lineTo(Math.cos(a) * 5.5, Math.sin(a) * 5.5); ctx.stroke(); }
+      break;
+    }
+    case "lock": { // 气锁链
+      ctx.rotate(ang);
+      ctx.strokeStyle = GREEN; ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-6 + i * 6, 0, 3, -1.2, 1.2); ctx.stroke(); }
+      break;
+    }
+  }
+  ctx.restore();
+}
+// 事件特效（雷击/爆炸/连锁/融合/渡劫…）
+function fxEvents(evs) {
+  for (const ev of evs) {
+    switch (ev.t) {
+      case "shot":
+        if (ev.kind === "fire") AudioFX.fire(); else if (ev.kind === "bolt") AudioFX.ice(); else if (ev.kind === "lock") AudioFX.sword(); else AudioFX.sword();
+        break;
+      case "hit":
+        burstHit(ev.x, ev.y, ev.ele);
+        if (ev.crit) { floatText(ev.x, ev.y - 14, "暴 " + ev.dmg, RED, 15); P(ev.x, ev.y, { type: "ring", r: 10, col: "rgba(158,43,37,.7)", decay: 3 }); }
+        break;
+      case "kill":
+        burstKill(ev.x, ev.y, ev.big);
+        AudioFX.kill();
+        floatText(ev.x, ev.y - 10, "+" + ev.bounty, "#8a6d1e", 12);
+        break;
+      case "bolt": { // 落雷
+        AudioFX.thunder();
+        const x0 = ev.x, y0 = ev.y, x1 = ev.tx, y1 = ev.ty;
+        // 锯齿闪电线
+        ctx.save(); ctx.globalCompositeOperation = "multiply";
+        ctx.strokeStyle = "rgba(168,132,44,.9)"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(x0, y0 - 40);
+        const steps = 6;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          ctx.lineTo(x0 + (x1 - x0) * t + (Math.random() - .5) * 16, y0 - 40 + (y1 - (y0 - 40)) * t + (Math.random() - .5) * 8);
+        }
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,250,220,.9)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.restore();
+        P(x1, y1, { type: "ring", r: 14, col: "rgba(168,132,44,.6)", decay: 3 });
+        for (let i = 0; i < 6; i++) P(x1, y1, { vx: (Math.random() - .5) * 160, vy: -Math.random() * 130, r: 1.6, col: GOLD, decay: 2.6, grav: 300 });
+        shake = Math.max(shake, 2.5);
+        break;
+      }
+      case "chain": { // 连锁弧
+        ctx.save();
+        ctx.strokeStyle = "rgba(168,132,44,.75)"; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(ev.x, ev.y);
+        const seg = 4;
+        for (let i = 1; i <= seg; i++) {
+          const t = i / seg;
+          ctx.lineTo(ev.x + (ev.tx - ev.x) * t + (Math.random() - .5) * 10, ev.y + (ev.ty - ev.y) * t + (Math.random() - .5) * 10);
+        }
+        ctx.stroke(); ctx.restore();
+        break;
+      }
+      case "boom": { // 溅射墨爆
+        const col = ev.ele === "fire" ? "rgba(196,90,40,.5)" : "rgba(93,61,107,.45)";
+        P(ev.x, ev.y, { type: "ink", r: ev.r * .55, col, decay: 2 });
+        P(ev.x, ev.y, { type: "ring", r: ev.r * .7, col: ev.ele === "fire" ? "rgba(196,90,40,.6)" : "rgba(43,38,32,.5)", decay: 2.4 });
+        for (let i = 0; i < 8; i++) {
+          const a = Math.random() * TAU;
+          P(ev.x, ev.y, { vx: Math.cos(a) * 90, vy: Math.sin(a) * 90 - 30, r: 1.8, col: ev.ele === "fire" ? "#c45a28" : PURPLE, decay: 2, grav: 160 });
+        }
+        break;
+      }
+      case "stun": P(ev.x, ev.y, { type: "ring", r: 8, col: "rgba(159,216,211,.8)", decay: 2.6 }); break;
+      case "leak":
+        AudioFX.leak();
+        shake = Math.max(shake, 5);
+        floatText(ev.x - 20, ev.y, "气运 -" + ev.dmg, RED, 15);
+        P(C.GATE[0], C.GATE[1], { type: "ring", r: 26, col: "rgba(158,43,37,.8)", decay: 1.6 });
+        break;
+      case "waveClear":
+        toast(`第 ${ev.n + 1} 波平定 · 灵石 +${ev.bonus}`);
+        break;
+      case "fuse": {
+        AudioFX.fuse();
+        // 金光柱
+        for (let i = 0; i < 16; i++) {
+          P(ev.x + (Math.random() - .5) * 24, ev.y + 10, { vy: -60 - Math.random() * 60, r: 2, col: "rgba(168,132,44,.9)", decay: 1 });
+        }
+        P(ev.x, ev.y, { type: "glow", r: 14, col: "rgba(168,132,44,.5)", decay: 1.2 });
+        floatText(ev.x, ev.y - 24, "◆ " + ev.name + " ◆", GOLD, 17);
+        if (ev.isNew) { toast(`图鉴新添 · ${ev.name}`); renderCodexMini(); }
+        shake = Math.max(shake, 3);
+        break;
+      }
+      case "tribWin": {
+        AudioFX.tribWin();
+        for (let i = 0; i < 24; i++) P(ev.x + (Math.random() - .5) * 20, ev.y, { vy: -90 - Math.random() * 90, r: 1.8, col: "rgba(200,160,60,.9)", decay: .8, life: 1.2 });
+        P(ev.x, ev.y, { type: "glow", r: 18, col: "rgba(200,160,60,.45)", decay: .9 });
+        floatText(ev.x, ev.y - 30, "渡劫功成 · " + ev.realm, GOLD, 16);
+        break;
+      }
+      case "tribFail": {
+        AudioFX.tribFail();
+        for (let i = 0; i < 14; i++) P(ev.x + (Math.random() - .5) * 26, ev.y, { vy: -40 - Math.random() * 40, vx: (Math.random() - .5) * 40, r: 2.4, col: "rgba(43,38,32,.7)", decay: .9 });
+        floatText(ev.x, ev.y - 30, "劫雷贯体 · 境陨一级", INK, 15);
+        shake = Math.max(shake, 4);
+        break;
+      }
+      case "qiGift": floatText(C.GATE[0] - 60, C.GATE[1] - 30, "先行灵气 +" + ev.qi, CYAN, 13); break;
+      case "win": AudioFX.win(); showEnd(true); break;
+      case "lose": AudioFX.lose(); showEnd(false); break;
+    }
+  }
+}
+
+/* ---------------- UI ---------------- */
+function toast(msg) {
+  const el = $("toast"); el.textContent = msg; el.style.opacity = 1;
+  clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 1800);
+}
+function bigLabel(msg) {
+  const el = $("wlabel"); el.textContent = msg; el.style.opacity = 1;
+  clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 2000);
+}
+function syncHUD() {
+  $("gold").textContent = Math.floor(g.gold);
+  $("qi").textContent = Math.floor(g.qi);
+  $("lives").textContent = g.lives;
+  $("kills").textContent = g.kills;
+  $("waven").textContent = g.endless ? g.wave + 1 : Math.min(g.wave + 1, 30);
+  $("best").textContent = (codexSaved && codexSaved.bestWave) ? codexSaved.bestWave : "—";
+  $("phasen").textContent = g.phase === "build" ? "备战" : g.phase === "wave" ? (g.endless ? "无尽妖潮" : "妖潮中") : g.phase === "win" ? "守山功成" : "山门失守";
+  // 阵法按钮可用性
+  document.querySelectorAll(".tbtn").forEach((b, i) => {
+    const k = C.BASE_KEYS[i]; b.disabled = g.gold < C.TOWERS[k].cost || g.phase === "over";
+  });
+  const pv = C.wavePreview(g);
+  if (pv) {
+    $("preview").innerHTML = pv.parts.map(p =>
+      `<div class="fpart"><span class="${p.boss ? 'boss' : (p.fly ? 'fly' : '')}">${p.boss ? "☠ " : (p.fly ? "☁ " : "")}${p.name}</span><span>×${p.count}</span></div>`
+    ).join("") + `<div class="fpart" style="color:#8a6d1e"><span>清波奖励</span><span>${pv.bonus}</span></div>`;
+  }
+}
+function renderTowerBar() {
+  const bar = $("towerbar");
+  bar.innerHTML = "";
+  C.BASE_KEYS.forEach(k => {
+    const T = C.TOWERS[k];
+    const b = document.createElement("button");
+    b.className = "tbtn"; b.dataset.k = k;
+    b.innerHTML = `${T.name}<span class="cost">灵石 ${T.cost}</span><small>${T.desc}</small>`;
+    b.onclick = () => {
+      AudioFX.ensure();
+      selKey = selKey === k ? null : k;
+      document.querySelectorAll(".tbtn").forEach(x => x.classList.toggle("sel", x.dataset.k === selKey));
+      closeTPanel();
+    };
+    bar.appendChild(b);
+  });
+}
+function renderCodexMini() {
+  const grid = $("codexMiniGrid");
+  grid.innerHTML = "";
+  let lit = 0;
+  const all = C.codexList();
+  for (const f of all) {
+    const seen = (g.codex[f.key] != null) || ((codexSaved && codexSaved.codex && codexSaved.codex[f.key]) != null);
+    if (seen) lit++;
+    const d = document.createElement("div");
+    d.title = seen ? `${f.name}：${f.desc}` : (f.secret ? "暗格 · 炼成才知" : `${f.name}（未炼成）`);
+    d.style.cssText = `height:20px;border:1px solid ${seen ? f.color : "rgba(43,38,32,.25)"};background:${seen ? f.color : "transparent"};opacity:${seen ? .9 : .3};font-size:9px;color:${seen ? PAPER : "#8a7f68"};display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap`;
+    d.textContent = seen ? f.name.slice(0, 3) : "？";
+    grid.appendChild(d);
+  }
+  $("codexCount").textContent = lit;
+}
+// 塔面板（升级/渡劫/索敌/出售/融合说明）
+function openTPanel(t) {
+  const el = $("tpanel");
+  const st = C.stats(t) || {};
+  const r = cv.getBoundingClientRect();
+  const sx = t.x * r.width / W, sy = t.y * r.height / H;
+  el.style.display = "block";
+  el.style.left = Math.min(r.width - 170, sx + 24) + "px";
+  el.style.top = Math.max(4, sy - 30) + "px";
+  const realmName = C.REALMS[t.realm];
+  const canTrib = t.lvl >= 3 && t.realm < 3;
+  const tribCost = C.TRIB_COST[t.realm];
+  const failP = C.TRIB_FAIL[t.realm];
+  const nextRealm = C.REALMS[t.realm + 1] || "";
+  const upCost = t.lvl < 3 ? st.up && st.up[t.lvl] : null;
+  const sellRefund = Math.round(t.spent * .7);
+  el.innerHTML = `
+    <div style="font-size:14px;letter-spacing:1px"><b>${t.name}</b> <span style="color:${GOLD}">${realmName}</span> · ${t.lvl}级</div>
+    <div style="color:#8a7f68;font-size:11px">${st.desc || ""}</div>
+    ${st.dmg ? `<div>伤害 ${Math.round(C.towerDmg(t))}${st.rate ? ` · 间隔 ${(st.rate * Math.pow(.92, t.lvl - 1)).toFixed(2)}s` : ""}${C.towerRange(t) ? ` · 射程 ${Math.round(C.towerRange(t))}` : ""}</div>` : `<div>产灵 ${(st.qiRate || st.qiPerSec || 0).toFixed(1)}/s</div>`}
+    ${t.traits.length ? `<div class="traitsTag">词条：${t.traits.map(k => C.TRAITS[k].name).join("·")}</div>` : ""}
+    <div class="row">
+      ${t.lvl < 3 ? `<button id="tpUp" ${g.gold < upCost ? "disabled" : ""}>强化 ${upCost}灵石</button>` : ""}
+      ${canTrib ? `<button id="tpTrib" class="trib" ${g.qi < tribCost ? "disabled" : ""}>渡劫·${nextRealm} ${tribCost}灵气</button>` : ""}
+    </div>
+    <div class="row">
+      索敌 <button data-m="first" class="${t.mode === 'first' ? 'sel' : ''}">前</button>
+      <button data-m="last">后</button><button data-m="closest">近</button>
+      <button data-m="strongest">强</button><button data-m="weakest">弱</button>
+    </div>
+    <div class="row"><button id="tpSell">拆阵 返${sellRefund}灵石</button></div>
+    <div style="color:#8a7f68;font-size:10px;margin-top:2px">拖至相邻阵法可融合（失败率 ${canTrib ? Math.round(failP * 100) : "—"}% 指渡劫）</div>
+  `;
+  el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { C.setTargetMode(g, t.id, b.dataset.m); openTPanel(t); });
+  const up = $("tpUp"); if (up) up.onclick = () => { if (C.upgradeTower(g, t.id).ok) { AudioFX.build(); openTPanel(t); } };
+  const trib = $("tpTrib"); if (trib) trib.onclick = () => { C.attemptTribulation(g, t.id); openTPanel(t); saveGame(); };
+  $("tpSell").onclick = () => {
+    C.sellTower(g, t.id); AudioFX.build(); closeTPanel();
+  };
+}
+function closeTPanel() { $("tpanel").style.display = "none"; selTower = null; }
+function saveGame() {
+  codexSaved = C.makeSave(g, codexSaved || undefined);
+  localStorage.setItem(C.SAVE_KEY, JSON.stringify(codexSaved));
+}
+function showEnd(win) {
+  saveGame();
+  const ov = document.createElement("div");
+  ov.className = "overlay";
+  const endlessBtn = win ? `<button class="seal" id="goEndless" style="font-size:18px;padding:10px 26px;margin-top:14px">开 启 无 尽 妖 潮</button><br>` : "";
+  ov.innerHTML = `<div class="sheet" style="text-align:center;min-width:340px">
+    <h2>${win ? "山门无恙 · 守山功成" : "气运耗尽 · 山门失守"}</h2>
+    <div style="font-size:15px;line-height:2">
+      妖潮第 <b style="color:var(--red)">${g.wave}</b> 波 ｜ 斩妖 <b style="color:var(--red)">${g.kills}</b><br>
+      图鉴 ${Object.keys(Object.assign({}, (codexSaved && codexSaved.codex) || {}, g.codex)).length}/16 ｜ 无尽纪录 ${(codexSaved && codexSaved.bestWave) || g.wave}
+    </div>
+    ${endlessBtn}
+    <button class="seal dark" id="restart" style="font-size:18px;padding:10px 26px;margin-top:14px">重 开 一 局</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const ge = $("goEndless");
+  if (ge) ge.onclick = () => {
+    C.startEndless(g); ov.remove();
+    toast("无尽妖潮 · 妖王每五波临世"); bigLabel("无 尽 妖 潮");
+  };
+  $("restart").onclick = () => location.reload();
+}
+// 图鉴全览浮层
+$("codexBtn").onclick = () => {
+  const ov = document.createElement("div");
+  ov.className = "overlay";
+  const merged = Object.assign({}, (codexSaved && codexSaved.codex) || {}, g.codex);
+  const all = C.codexList();
+  const cells = all.map(f => {
+    const seen = merged[f.key] != null;
+    return `<div class="cc ${seen ? '' : 'locked'}">
+      <div class="nm" style="color:${f.color}">${seen ? f.name : "？？？"}</div>
+      <div class="rc">${seen ? (f.recipe ? f.recipe.map(k => C.TOWERS[k].name).join(" + ") : "同种相邻相融") : (f.secret ? "暗格" : "未炼成")}</div>
+      <div style="font-size:11px">${seen ? f.desc : "炼成才见真容"}</div>
+      <div class="rc">灵气 ${f.costQi}${seen ? " · 首炼于第 " + merged[f.key] + " 波" : ""}</div>
+    </div>`;
+  }).join("");
+  ov.innerHTML = `<div class="sheet"><h2>融合图鉴 · ${Object.keys(merged).length}/16</h2>
+    <div class="codex">${cells}</div>
+    <div style="text-align:center;margin-top:14px"><button class="seal dark" id="cxClose">合上图鉴</button></div></div>`;
+  document.body.appendChild(ov);
+  $("cxClose").onclick = () => ov.remove();
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+};
+
+/* ---------------- 输入 ---------------- */
+function canvasPos(e) {
+  const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height];
+}
+cv.addEventListener("pointermove", e => {
+  [mouseX, mouseY] = canvasPos(e);
+  hoverTower = null;
+  if (!dragTower && !selKey) {
+    for (const t of g.towers) if (Math.hypot(t.x - mouseX, t.y - mouseY) < C.radiusOf(t) + 6) { hoverTower = t; break; }
+  }
+  if (dragTower) { dragTower.x = mouseX - dragDX; dragTower.y = mouseY - dragDY; }
+});
+cv.addEventListener("pointerdown", e => {
+  AudioFX.ensure();
+  const [x, y] = canvasPos(e);
+  if (g.phase === "over") return;
+  // 1. 点塔：选中 + 可拖拽融合（记录原位，未融合则弹回）
+  for (const t of g.towers) {
+    if (Math.hypot(t.x - x, t.y - y) < C.radiusOf(t) + 6) {
+      selTower = t; openTPanel(t);
+      dragTower = t; dragDX = x - t.x; dragDY = y - t.y;
+      dragOX = t.x; dragOY = t.y;
+      cv.setPointerCapture(e.pointerId);
+      return;
+    }
+  }
+  // 2. 布阵
+  if (selKey) {
+    const t = C.placeTower(g, x, y, selKey);
+    if (t) {
+      AudioFX.build();
+      P(t.x, t.y, { type: "ring", r: 16, col: "rgba(43,38,32,.5)", decay: 2 });
+      saveGame();
+    } else {
+      const chk = C.canPlace(g, x, y, selKey);
+      floatText(x, y, chk.why || "不可布阵", RED, 13);
+    }
+    return;
+  }
+  closeTPanel();
+});
+cv.addEventListener("pointerup", e => {
+  if (!dragTower) return;
+  const t = dragTower;
+  const [x, y] = canvasPos(e);
+  dragTower = null;
+  // 落点找融合目标
+  let fused = false;
+  for (const o of g.towers) {
+    if (o === t) continue;
+    if (Math.hypot(o.x - x, o.y - y) < C.radiusOf(o) + 10) {
+      const r = C.fuseTowers(g, t.id, o.id);
+      if (r.ok) { fused = true; saveGame(); closeTPanel(); }
+      else floatText(x, y, r.why + (r.need ? `（需${r.need}灵气）` : ""), RED, 13);
+      break;
+    }
+  }
+  // 未融合则弹回原位（塔位固定，拖拽仅表达融合意图）
+  if (!fused) { t.x = dragOX; t.y = dragOY; }
+});
+cv.addEventListener("pointerleave", () => { mouseX = mouseY = -99; });
+
+// 快进/召妖按钮
+$("ff").onclick = () => {
+  speed = speed === 1 ? 2 : speed === 2 ? 3 : 1;
+  $("ff").textContent = "快进 ×" + speed;
+  $("ff").classList.toggle("sel", speed > 1);
+};
+$("startWaveBtn").onclick = () => {
+  AudioFX.ensure();
+  if (g.phase !== "build") return;
+  const wasFirst = g.wave === 0 && !isFinite(g.autoT);
+  C.startWave(g);
+  AudioFX.wave();
+  const pv = C.wavePreview(g) || { n: g.wave + 1, parts: [] };
+  // 检查本波是否有妖王
+  const bossWave = pv.parts.some(p => p.boss);
+  bigLabel(bossWave ? "妖 王 临 世" : `妖 潮 · 第 ${g.wave + 1} 波`);
+  if (bossWave) shake = Math.max(shake, 6);
+};
+$("sndBtn").onclick = () => {
+  AudioFX.ensure();
+  const on = AudioFX.toggle();
+  $("sndBtn").textContent = on ? "音·开" : "音·关";
+};
+window.addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); $("startWaveBtn").click(); }
+  if (e.key >= "1" && e.key <= "6") { const k = C.BASE_KEYS[+e.key - 1]; if (k) document.querySelector(`[data-k="${k}"]`).click(); }
+  if (e.key === "f" || e.key === "F") $("ff").click();
+});
+
+/* ---------------- 主循环 ---------------- */
+let last = performance.now();
+let acc = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = Math.min(.05, (now - last) / 1000);
+  last = now;
+  const t = now / 1000;
+  // 逻辑步进（快进 = 多次小步，保事件时序）
+  const steps = speed;
+  for (let i = 0; i < steps; i++) {
+    const evs = C.gameStep(g, dt);
+    fxEvents(evs);
+    stepParts(dt);
+  }
+  // 渲染
+  ctx.save();
+  if (shake > 0) {
+    ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+    shake = Math.max(0, shake - dt * 18);
+  }
+  drawBG(t);
+  drawFuseLinks();
+  for (const tw of g.towers) drawTower(tw, t);
+  for (const e of g.enemies) drawFoe(e, t);
+  for (const p of g.projectiles) drawProjectile(p);
+  drawParts();
+  drawPlacementGhost();
+  // 飘字
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i];
+    f.life -= dt * .8; f.y -= dt * 26;
+    if (f.life <= 0) { floaters.splice(i, 1); continue; }
+    ctx.save(); ctx.globalAlpha = Math.min(1, f.life * 1.6);
+    ctx.font = `${f.size}px "Songti SC","SimSun",serif`;
+    ctx.fillStyle = f.col; ctx.textAlign = "center";
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+  // 右下守山印
+  ctx.save(); ctx.globalAlpha = .5;
+  ctx.strokeStyle = RED; ctx.lineWidth = 2;
+  ctx.strokeRect(W - 74, H - 74, 46, 46);
+  ctx.fillStyle = RED; ctx.font = "15px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("守", W - 51, H - 58); ctx.fillText("山", W - 51, H - 40);
+  ctx.restore();
+  ctx.restore();
+  // 波间倒计时（建造期）
+  if (g.phase === "build" && isFinite(g.autoT) && g.autoT > 0) {
+    ctx.save(); ctx.globalAlpha = .8;
+    ctx.font = '13px "Songti SC","SimSun",serif'; ctx.fillStyle = INK; ctx.textAlign = "center";
+    ctx.fillText(`下波妖潮 ${Math.ceil(g.autoT)}s · 提前召妖有灵气赏`, W / 2, 26);
+    ctx.restore();
+  }
+  syncHUD();
+}
+renderTowerBar();
+renderCodexMini();
+syncHUD();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
