@@ -231,6 +231,18 @@ let codexSaved = JSON.parse(localStorage.getItem(C.SAVE_KEY) || "null");
 
 /* ================= R3D · three.js 水墨 3D 渲染层 ================= */
 const R3D = (() => {
+  let viewW = 960, viewH = 600;
+  function applyViewSize() {
+    const w = Math.max(320, Math.round(cv.clientWidth || 960));
+    const h = Math.max(200, Math.round(w * 600 / 960));
+    if (w === viewW && h === viewH) return;
+    viewW = w; viewH = h;
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    POST.resize(w, h);
+  }
   const INK = 0x2b2620, PAPER = 0xe8e0ce, RED = 0x9e2b25, CYAN = 0x3d6b6b, GOLD = 0xa8842c, GREEN = 0x5a6b3d, PURPLE = 0x5d3d6b;
   const R01 = i => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
   const cv = document.getElementById("cv");
@@ -248,6 +260,7 @@ const R3D = (() => {
   const POST = (() => {
     const RW = 960, RH = 600;
     const rtScene = new THREE.WebGLRenderTarget(RW, RH, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, type: THREE.HalfFloatType });
+    const rtFxaa = new THREE.WebGLRenderTarget(RW, RH, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, type: THREE.HalfFloatType });
     const blurs = [];
     let bw = RW >> 2, bh = RH >> 2;
     for (let i = 0; i < 5; i++) {
@@ -263,6 +276,23 @@ const R3D = (() => {
     const qscene = new THREE.Scene(); qscene.add(quad);
     const VS = "varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }";
     const mkMat = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
+    const mFxaa = mkMat(
+      "uniform sampler2D t; uniform vec2 rcp; varying vec2 vUv;" +
+      "void main(){" +
+      " vec3 c=texture2D(t,vUv).rgb; float lC=dot(c,vec3(.299,.587,.114));" +
+      " vec3 nw=texture2D(t,vUv+rcp*vec2(-1.,-1.)).rgb; vec3 ne=texture2D(t,vUv+rcp*vec2(1.,-1.)).rgb;" +
+      " vec3 sw=texture2D(t,vUv+rcp*vec2(-1.,1.)).rgb; vec3 se=texture2D(t,vUv+rcp*vec2(1.,1.)).rgb;" +
+      " float lNW=dot(nw,vec3(.299,.587,.114)); float lNE=dot(ne,vec3(.299,.587,.114));" +
+      " float lSW=dot(sw,vec3(.299,.587,.114)); float lSE=dot(se,vec3(.299,.587,.114));" +
+      " float lMin=min(lC,min(min(lNW,lNE),min(lSW,lSE))); float lMax=max(lC,max(max(lNW,lNE),max(lSW,lSE)));" +
+      " vec3 dir=vec3(-((lNW+lNE)-(lSW+lSE)),(lNW+lSW)-(lNE+lSE),0.);" +
+      " float dirReduce=max((lMin+lMax)*.25,.125);" +
+      " float rcpDirMin=1./(min(abs(dir.x),abs(dir.y))+dirReduce);" +
+      " dir=clamp(dir*rcpDirMin,-8.,8.);" +
+      " vec2 dUv=dir.xy*rcp;" +
+      " vec3 sa=texture2D(t,vUv+dUv*vec2(-1.,-1.)/3.).rgb; vec3 sb=texture2D(t,vUv+dUv*vec2(1.,1.)/3.).rgb;" +
+      " c=(c+sa+sb)*.3333; gl_FragColor=vec4(c,1.); }",
+      { t: { value: null }, rcp: { value: new THREE.Vector2(1 / RW, 1 / RH) } });
     const mBright = mkMat(
       "uniform sampler2D t; varying vec2 vUv; void main(){ vec3 c=texture2D(t,vUv).rgb; float l=dot(c,vec3(.2126,.7152,.0722)); gl_FragColor=vec4(c*smoothstep(.62,1.05,l),1.); }",
       { t: { value: null } });
@@ -283,10 +313,22 @@ const R3D = (() => {
       " gl_FragColor=vec4(c,1.); }",
       { scene: { value: null }, bloom: { value: null }, time: { value: 0 } });
     let enabled = true;
+    function resizeRT(w, h) {
+      rtScene.setSize(w, h);
+      rtFxaa.setSize(w, h);
+      let bw = Math.max(8, w >> 2), bh = Math.max(8, h >> 2);
+      for (const B of blurs) {
+        B.a.setSize(bw, bh); B.b.setSize(bw, bh); B.w = bw; B.h = bh;
+        bw = Math.max(4, bw >> 1); bh = Math.max(4, bh >> 1);
+      }
+      mFxaa.uniforms.rcp.value.set(1 / w, 1 / h);
+    }
     function render(scene, camera, time) {
       if (!enabled) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
       renderer.setRenderTarget(rtScene); renderer.render(scene, camera);
-      quad.material = mBright; mBright.uniforms.t.value = rtScene.texture;
+      quad.material = mFxaa; mFxaa.uniforms.t.value = rtScene.texture;
+      renderer.setRenderTarget(rtFxaa); renderer.render(qscene, cam2);
+      quad.material = mBright; mBright.uniforms.t.value = rtFxaa.texture;
       renderer.setRenderTarget(blurs[0].a); renderer.render(qscene, cam2);
       for (let i = 0; i < blurs.length; i++) {
         const B = blurs[i];
@@ -307,7 +349,7 @@ const R3D = (() => {
       mComposite.uniforms.time.value = time % 100;
       renderer.setRenderTarget(null); renderer.render(qscene, cam2);
     }
-    return { render, get enabled() { return enabled; }, set enabled(v) { enabled = v; } };
+    return { render, resize: resizeRT, get enabled() { return enabled; }, set enabled(v) { enabled = v; } };
   })();
 
   const scene = new THREE.Scene();
@@ -1539,7 +1581,8 @@ const R3D = (() => {
   const v3 = new THREE.Vector3();
   function toScreen(x, y, z) {
     v3.set(x, y, z).project(camera);
-    return [(v3.x * .5 + .5) * 960, (-v3.y * .5 + .5) * 600];
+    const cw = cv.clientWidth || 960, ch = cv.clientHeight || 600;
+    return [(v3.x * .5 + .5) * cw, (-v3.y * .5 + .5) * ch];
   }
 
   // ---------- 拾取（屏幕 → 地面 2D 坐标） ----------
@@ -1828,6 +1871,9 @@ const R3D = (() => {
   }
   const towerMeshes = new Map();
 
+  applyViewSize();
+  window.addEventListener("resize", applyViewSize);
+
   // ---------- 相机（轨道 + 阻尼 + 震屏） ----------
   function render(dt, time) {
     // 闲置自动环绕（attract mode）
@@ -1877,7 +1923,7 @@ const R3D = (() => {
 
   return {
     scene, camera, renderer, emit, boltFX, sync, render, toScreen, pickGround,
-    ghost, ghostRing, ghostDisc, cam, applyCam, POST, flashLight, pillarFX, cine, deathStain,
+    ghost, ghostRing, ghostDisc, cam, applyCam, POST, flashLight, pillarFX, cine, deathStain, applyViewSize, viewSize: () => [viewW, viewH],
     set shake(v) { shake = v; }, get shake() { return shake; },
     set gateHurt(v) { gateHurt = Math.max(gateHurt, v); },
   };
@@ -1886,13 +1932,12 @@ const R3D = (() => {
 /* ---------------- 3D 特效调度（事件 → 粒子/闪电/飘字） ---------------- */
 const wrap = document.getElementById("wrap");
 function floatText3D(x, z, text, col, size, yOff) {
-  const [sx, sy] = R3D.toScreen(x, (yOff || 14), z);
   const el = document.createElement("div");
   el.className = "ft";
   el.textContent = text;
-  el.style.cssText = `position:absolute;left:${sx}px;top:${sy}px;color:${col || "#a8842c"};font-size:${size || 13}px;letter-spacing:1px;pointer-events:none;z-index:12;text-shadow:0 0 3px rgba(232,224,206,.9);transform:translate(-50%,-100%);white-space:nowrap`;
+  el.style.cssText = `position:absolute;left:0;top:0;color:${col || "#a8842c"};font-size:${size || 13}px;letter-spacing:1px;pointer-events:none;z-index:12;text-shadow:0 0 3px rgba(232,224,206,.9);transform:translate(-50%,-100%);white-space:nowrap`;
   wrap.appendChild(el);
-  floaters.push({ el, life: 1 });
+  floaters.push({ el, life: 1, wx: x, wy: yOff || 16, wz: z, rise: 0 });
 }
 let floaters = [];
 let comboN = 0, comboLast = 0;
@@ -1900,9 +1945,12 @@ function stepFloaters(dt) {
   for (let i = floaters.length - 1; i >= 0; i--) {
     const f = floaters[i];
     f.life -= dt * .8;
-    f.el.style.top = (parseFloat(f.el.style.top) - dt * 28) + "px";
+    f.rise += dt * 30;
+    if (f.life <= 0) { f.el.remove(); floaters.splice(i, 1); continue; }
+    const [sx, sy] = R3D.toScreen(f.wx, f.wy + f.rise, f.wz); // 每帧世界重投影
+    f.el.style.left = sx + "px";
+    f.el.style.top = sy + "px";
     f.el.style.opacity = Math.min(1, f.life * 1.5);
-    if (f.life <= 0) { f.el.remove(); floaters.splice(i, 1); }
   }
 }
 function burstKill3D(x, z, big) {
@@ -2209,7 +2257,7 @@ function openTPanel(t) {
   const st = C.stats(t) || {};
   el.style.display = "block";
   const [sx, sy] = R3D.toScreen(t.x, 10, t.y);
-  el.style.left = Math.min(960 - 180, sx + 26) + "px";
+  el.style.left = Math.min((cv.clientWidth || 960) - 180, sx + 26) + "px";
   el.style.top = Math.max(4, sy - 30) + "px";
   const canTrib = t.lvl >= 3 && t.realm < 3;
   const tribCost = C.TRIB_COST[t.realm];
