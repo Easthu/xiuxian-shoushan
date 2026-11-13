@@ -1496,7 +1496,7 @@ const R3D = (() => {
       }
       shape.lineTo(width / 2, 0); shape.closePath();
       const geo = new THREE.ShapeGeometry(shape);
-      const alpha = [.44, .30, .18][layer];
+      const alpha = [.46, .32, .24][layer];
       const mat = new THREE.MeshBasicMaterial({ color: INK, map: ridgeTex, transparent: true, opacity: alpha, depthWrite: false, fog: false });
       const m = new THREE.Mesh(geo, mat);
       m.position.set(480 - layer * 60, 8, 285 - layer * 130 - 90);
@@ -1702,7 +1702,7 @@ const R3D = (() => {
   (function buildSky() {
     const geo = new THREE.SphereGeometry(2400, 24, 14);
     const colors = new Float32Array(geo.attributes.position.count * 3);
-    const top = new THREE.Color(0x7f9db2), mid = new THREE.Color(0xd2c7ac), bot = new THREE.Color(0xd8cfba);
+    const top = new THREE.Color(0x6f93ac), mid = new THREE.Color(0xd2c7ac), bot = new THREE.Color(0xd8cfba);
     const tmp = new THREE.Color();
     for (let i = 0; i < geo.attributes.position.count; i++) {
       const y = geo.attributes.position.getY(i) / 2400;
@@ -2093,7 +2093,7 @@ const R3D = (() => {
     base.position.y = 2.5; base.castShadow = true; base.receiveShadow = true; grp.add(base);
     // 符盘
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 2.4, isF ? 24 : 20),
-      new THREE.MeshStandardMaterial({ map: discTex, roughness: .85 }));
+      new THREE.MeshStandardMaterial({ map: discTex, roughness: .58, envMapIntensity: .7 }));
     disc.position.y = 6.2; disc.receiveShadow = true; grp.add(disc);
     // 属性环（发光）
     const ring = new THREE.Mesh(new THREE.TorusGeometry(R - 4, 1.5, 14, isF ? 44 : 36),
