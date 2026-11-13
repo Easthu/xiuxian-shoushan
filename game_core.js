@@ -378,10 +378,11 @@
   function acquire(t, g) {
     const T = stats(t);
     if (!T) return null;
+    const dongxu = hasT(t, "dongxu"); // 洞虚：对空对地全能
     let best = null, score = -Infinity;
     for (const e of g.enemies) {
       if (e.dead) continue;
-      const canHit = e.fly ? T.air : T.ground;
+      const canHit = dongxu ? true : (e.fly ? T.air : T.ground);
       if (!canHit) continue;
       const [ex, ey] = foePos(g, e);
       const dd = Math.hypot(ex - t.x, ey - t.y);
@@ -399,8 +400,8 @@
   }
   function towerRange(t) {
     const T = stats(t);
-    if (T) return T.range + (t.lvl - 1) * 10 + (t.rangeBonus || 0);
-    return 0;
+    if (!T) return 0;
+    return T.range + (t.lvl - 1) * 10 + (t.realm || 0) * 8 + (hasT(t, "fanwei") ? T.range * 0.15 : 0);
   }
 
   // ---------- 升级 / 出售 / 索敌切换（里程碑3） ----------
@@ -479,6 +480,53 @@
       return { key: k, name: F.name, desc: F.desc, secret: !!F.secret, recipe: F.recipe, color: F.color, costQi: F.costQi };
     });
   }
+
+  // ---------- 渡劫升境 + 词条池（里程碑5 · 风险成长） ----------
+  const REALMS = ["练气", "筑基", "金丹", "元婴"];
+  const TRIB_FAIL = [0.20, 0.35, 0.50];   // 升 筑基/金丹/元婴 失败率
+  const TRIB_COST = [30, 60, 100];         // 灵气消耗
+  // 词条池（14 ≥ 12；apply 字段声明生效点，引擎按 key 挂钩）
+  const TRAITS = {
+    crit:   { key: "crit",   name: "暴击",   desc: "15% 概率双倍伤害" },
+    pierce: { key: "pierce", name: "穿透",   desc: "破甲 +30%" },
+    chain:  { key: "chain",  name: "连锁",   desc: "连锁 +1 跳（无连锁则获得 1 跳 50%）" },
+    xiling: { key: "xiling", name: "吸灵",   desc: "击杀额外 +1 灵气" },
+    sudu:   { key: "sudu",   name: "攻速",   desc: "出手速率 +18%" },
+    fanwei: { key: "fanwei", name: "范围",   desc: "射程 +15%" },
+    zhongshang: { key: "zhongshang", name: "重伤", desc: "减速时长 +25%" },
+    zhuoxin:{ key: "zhuoxin",name: "灼心",   desc: "攻击附带燃伤" },
+    dongxu: { key: "dongxu", name: "洞虚",   desc: "对空对地全能" },
+    lingmai:{ key: "lingmai",name: "聚灵脉", desc: "产灵效率 +50%" },
+    jianyi: { key: "jianyi", name: "剑意",   desc: "伤害 +12%" },
+    leiyin: { key: "leiyin", name: "雷引",   desc: "15% 概率引落雷 30% 伤害" },
+    dingshen:{ key: "dingshen", name: "定身符", desc: "8% 概率定身 0.8s" },
+    yufeng: { key: "yufeng", name: "御风",   desc: "弹速 +40%" },
+  };
+  const TRAIT_KEYS = Object.keys(TRAITS);
+  // 3 级阵法渡劫：成功 realm+1 且得 1 词条；失败降一级（不碎）
+  function attemptTribulation(g, id, opts) {
+    opts = opts || {};
+    const t = g.towers.find(x => x.id === id);
+    if (!t) return { ok: false, why: "无此阵法" };
+    if (t.lvl < 3) return { ok: false, why: "需三级阵法" };
+    if (t.realm >= 3) return { ok: false, why: "已至元婴" };
+    const cost = TRIB_COST[t.realm];
+    if (g.qi < cost) return { ok: false, why: "灵气不足", need: cost, have: Math.floor(g.qi) };
+    g.qi -= cost;
+    const failP = TRIB_FAIL[t.realm];
+    const win = opts.force === "win" ? true : opts.force === "lose" ? false : g.rng() >= failP;
+    if (!win) {
+      t.lvl = Math.max(1, t.lvl - 1);
+      g.events.push({ t: "tribFail", x: t.x, y: t.y, realm: REALMS[t.realm] });
+      return { ok: true, win: false, lvl: t.lvl };
+    }
+    t.realm++;
+    const pool = TRAIT_KEYS.filter(k => !t.traits.includes(k));
+    const trait = pool[Math.floor(g.rng() * pool.length)] || null;
+    if (trait) t.traits.push(trait);
+    g.events.push({ t: "tribWin", x: t.x, y: t.y, realm: REALMS[t.realm], trait });
+    return { ok: true, win: true, realm: t.realm, trait, name: trait ? TRAITS[trait].name : null };
+  }
   // 融合阵的战斗属性（里程碑4启用；这里先给占位，避免 acquire 崩）
   function FUSION_TOWER_STATS(t) { return { ground: false, air: false }; }
 
@@ -487,16 +535,26 @@
     return posAt(e.d);
   }
 
-  // ---------- 伤害结算 ----------
+  // ---------- 伤害结算（含词条：暴击/穿透/雷引） ----------
   function hitEnemy(g, e, dmg, opts) {
     opts = opts || {};
     if (e.dead) return 0;
-    const pierce = opts.pierce || 0;
+    const tw = opts.tw;
+    let pierce = opts.pierce || 0;
+    if (tw && hasT(tw, "pierce")) pierce = Math.min(1, pierce + 0.3);
+    let crit = false;
+    if (tw && hasT(tw, "crit") && g.rng() < 0.15) { dmg *= 2; crit = true; }
     const eff = dmg * (1 - Math.min(0.85, e.armor) * (1 - pierce));
     e.hp -= eff;
     e.hitT = 0.18; // 受击白闪
-    g.events.push({ t: "hit", x: foePos(g, e)[0], y: foePos(g, e)[1], dmg: Math.round(eff), eid: e.id, ele: opts.ele || "metal" });
-    if (e.hp <= 0) killEnemy(g, e, opts.tw, opts.ele);
+    g.events.push({ t: "hit", x: foePos(g, e)[0], y: foePos(g, e)[1], dmg: Math.round(eff), eid: e.id, ele: opts.ele || "metal", crit });
+    // 雷引：15% 概率引落雷 30% 伤害
+    if (tw && hasT(tw, "leiyin") && !crit && g.rng() < 0.15) {
+      const bolt = dmg * 0.3;
+      e.hp -= bolt;
+      g.events.push({ t: "bolt", x: e.x || foePos(g, e)[0], y: foePos(g, e)[1] - 60, tx: foePos(g, e)[0], ty: foePos(g, e)[1], mini: true });
+    }
+    if (e.hp <= 0) killEnemy(g, e, tw, opts.ele);
     return eff;
   }
   // 击杀结算（直伤/DoT 共用；tw=来源阵法，融合阵吃 onKillQi 类词条）
@@ -510,6 +568,7 @@
       const T = stats(tw);
       if (T && T.onKillQi) g.qi += T.onKillQi;
       if (T && T.onKillAirQi && e.fly) g.qi += T.onKillAirQi;
+      if (hasT(tw, "xiling")) g.qi += 1; // 吸灵词条
     }
     g.events.push({ t: "kill", x: foePos(g, e)[0], y: foePos(g, e)[1], bounty: b, eid: e.id, big: e.type === "boss", qi: 1 + ((tw && stats(tw) && stats(tw).onKillQi) || 0) });
   }
@@ -569,8 +628,8 @@
       t.spin += dt;
       const T = stats(t);
       if (!T) continue;
-      // 产灵气（聚灵/凝泉/舟坞/剑心）
-      const qRate = (T.qiRate || T.qiPerSec || 0);
+      // 产灵气（聚灵/凝泉/舟坞/剑心；聚灵脉 +50%）
+      const qRate = (T.qiRate || T.qiPerSec || 0) * (hasT(t, "lingmai") ? 1.5 : 1);
       if (qRate) g.qi += qRate * dt * (1 + (t.lvl - 1) * 0.5);
       if (!T.rate || T.rate <= 0) continue; // 纯产灵阵不攻击
       if (t.cd > 0) { t.cd -= dt; continue; }
@@ -579,23 +638,31 @@
       const [tx, ty] = foePos(g, target);
       t.angle = Math.atan2(ty - t.y, tx - t.x);
       const dmg = towerDmg(t);
-      t.cd = T.rate * Math.pow(0.92, t.lvl - 1);
+      t.cd = T.rate * Math.pow(0.92, t.lvl - 1) * (hasT(t, "sudu") ? 0.85 : 1);
+      // 连锁词条：+1 跳（无连锁则获得 1 跳 50%）
+      let chain = T.chain || null;
+      if (hasT(t, "chain")) chain = chain ? { ...chain, n: chain.n + 1 } : { n: 1, mul: 0.5 };
       const common = {
-        chain: T.chain || null, dot: T.dot || null, stun: T.stun || null,
+        chain, dot: T.dot || null, stun: T.stun || null,
         onKillQi: T.onKillQi || 0, onKillAirQi: T.onKillAirQi || 0,
         splash: T.splash || 0, splashMul: T.splashMul || 0.7,
-        pierce: T.pierce || 0, slowF: T.slowF || 0, slowT: T.slowT || 0,
+        pierce: T.pierce || 0,
+        slowF: T.slowF || 0, slowT: (T.slowT || 0) * (hasT(t, "zhongshang") ? 1.25 : 1),
         ele: T.ele, srcId: t.id, born: g.clock, tw: t,
+        extraBurn: hasT(t, "zhuoxin") ? dmg * 0.5 : 0, // 灼心：附 50% 一次燃伤
+        stunTrait: hasT(t, "dingshen") ? { chance: 0.08, dur: 0.8 } : null,
       };
       if (T.proj === "none") {
         // 即时雷击（天雷/雷罚/引雷）
         hitEnemy(g, target, dmg, { pierce: T.pierce || 0, ele: "thunder", tw: t });
-        procChain(g, tx, ty, dmg, T.chain, T.pierce || 0, target.id);
+        if (common.extraBurn) applyDot(target, { dps: dmg * 0.5, dur: 1.5 }, t);
+        procStun(g, target, common.stunTrait);
+        procChain(g, tx, ty, dmg, chain, T.pierce || 0, target.id);
         g.events.push({ t: "bolt", x: t.x, y: t.y, tx, ty });
       } else {
         g.projectiles.push({
           id: nid(), kind: T.proj, x: t.x, y: t.y, tx, ty,
-          targetId: target.id, spd: 500, dmg, ...common,
+          targetId: target.id, spd: 500 * (hasT(t, "yufeng") ? 1.4 : 1), dmg, ...common,
         });
         g.events.push({ t: "shot", x: t.x, y: t.y, tx, ty, kind: T.proj });
       }
@@ -620,8 +687,10 @@
             if (Math.hypot(ex - p.tx, ey - p.ty) <= p.splash) {
               hitEnemy(g, e, p.dmg * (e.id === p.targetId ? 1 : p.splashMul), opts);
               applyDot(e, p.dot, p.tw);
+              if (p.extraBurn) applyDot(e, { dps: p.extraBurn * 0.4, dur: 1.5 }, p.tw);
               if (p.slowF) { e.slowF = Math.max(e.slowT > 0 ? e.slowF : 0, p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
               procStun(g, e, p.stun);
+              procStun(g, e, p.stunTrait);
             }
           }
           g.events.push({ t: "boom", x: p.tx, y: p.ty, r: p.splash, ele: p.ele });
@@ -631,8 +700,10 @@
           if (e) {
             hitEnemy(g, e, p.dmg, opts);
             applyDot(e, p.dot, p.tw);
+            if (p.extraBurn) applyDot(e, { dps: p.extraBurn * 0.4, dur: 1.5 }, p.tw);
             if (p.slowF) { e.slowF = Math.max(e.slowT > 0 ? e.slowF : 0, p.slowF); e.slowT = Math.max(e.slowT, p.slowT); }
             procStun(g, e, p.stun);
+            procStun(g, e, p.stunTrait);
             procChain(g, p.tx, p.ty, p.dmg, p.chain, p.pierce, e.id);
           } else {
             g.events.push({ t: "whiff", x: p.tx, y: p.ty });
@@ -666,12 +737,15 @@
     if (g.lives <= 0) { g.lives = 0; g.phase = "over"; g.events.push({ t: "lose" }); }
   }
 
-  // 升级伤害/速度
+  // 升级伤害/速度（含境界 ×1.25^realm、剑意 ×1.12）
   function towerDmg(t) {
     const T = stats(t);
     if (!T) return 0;
-    return T.dmg * Math.pow(1.45, t.lvl - 1);
+    let d = T.dmg * Math.pow(1.45, t.lvl - 1) * Math.pow(1.25, t.realm || 0);
+    if (t.traits.includes("jianyi")) d *= 1.12;
+    return d;
   }
+  const hasT = (t, k) => t.traits && t.traits.includes(k);
 
   // ---------- 特殊机制结算（融合阵） ----------
   function applyDot(e, dot, tw) {
@@ -740,6 +814,7 @@
     acquire, towerRange, towerDmg, foePos, hitEnemy, TOWER_R, curveSpec, bountyOf,
     upgradeTower, sellTower, setTargetMode,
     FUSIONS, getFusion, CODEX_ALL, canFuse, fuseTowers, codexList, radiusOf, FUSE_DIST,
+    REALMS, TRIB_FAIL, TRIB_COST, TRAITS, TRAIT_KEYS, attemptTribulation,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else global.Core = Core;
