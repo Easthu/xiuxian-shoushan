@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>修仙守山 · 水墨Demo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; }
+  body { background:#e8e0ce; display:flex; flex-direction:column; align-items:center;
+         font-family:"Songti SC","STSong","SimSun",serif; overflow:hidden; }
+  #wrap { position:relative; }
+  canvas { display:block; }
+  /* 宣纸纹理 */
+  #wrap::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.42 0 0 0 0.08 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  #hud { width:100%; max-width:900px; display:flex; justify-content:space-between; align-items:center;
+         padding:10px 18px; color:#2b2620; }
+  #hud .stat { font-size:18px; letter-spacing:2px; }
+  #hud .stat b { color:#9e2b25; }
+  #btns { display:flex; gap:10px; padding:0 0 12px; }
+  .seal { background:#e8e0ce; border:2px solid #9e2b25; color:#9e2b25; padding:6px 18px;
+          font-family:inherit; font-size:16px; letter-spacing:3px; cursor:pointer;
+          box-shadow:2px 2px 0 rgba(158,43,37,.35); }
+  .seal:hover { background:#9e2b25; color:#e8e0ce; }
+  .seal.sel { background:#9e2b25; color:#e8e0ce; }
+  .seal:disabled { opacity:.35; cursor:not-allowed; }
+  #tip { color:#6b6353; font-size:13px; padding-bottom:8px; letter-spacing:1px; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <span class="stat">灵石 <b id="gold">120</b></span>
+  <span class="stat" style="font-size:24px;letter-spacing:8px">修仙守山</span>
+  <span class="stat">气运 <b id="lives">10</b> ｜ 斩妖 <b id="kills">0</b></span>
+</div>
+<div id="btns">
+  <button class="seal" id="b0">御剑阵 ·40</button>
+  <button class="seal" id="b1">玄冰阵 ·60</button>
+  <button class="seal" id="ff">快进 ×2</button>
+</div>
+<div id="tip">点选阵法 → 点击山道旁空地布阵；妖兽走完山道扣气运，气运尽则山门失守</div>
+<div id="wrap"><canvas id="cv" width="900" height="560"></canvas></div>
+
+<script>
+"use strict";
+// ===== 数据 =====
+const COST=[40,60], RANGE=[130,110], RATE=[0.55,1.2], DPS=[20,7], SLOW=[0,0.45];
+const INK="#2b2620", RED="#9e2b25", CYAN="#3d6b6b", GOLD="#a8842c";
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+const W=cv.width, H=cv.height;
+
+// S 形山道折线
+const PATH=[[70,80],[380,80],[380,300],[130,300],[130,480],[700,480],[700,180],[840,180],[840,520]];
+const segs=[]; let PLEN=0;
+for(let i=0;i<PATH.length-1;i++){const a=PATH[i],b=PATH[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]);segs.push({a,b,L,s:PLEN});PLEN+=L;}
+function posAt(d){ d=Math.max(0,Math.min(PLEN,d));
+  for(const s of segs){ if(d<=s.s+s.L){const t=(d-s.s)/s.L;
+    return [s.a[0]+(s.b[0]-s.a[0])*t, s.a[1]+(s.b[1]-s.a[1])*t];}}
+  return PATH[PATH.length-1].slice(); }
+
+// ===== 状态 =====
+let gold=120, lives=10, kills=0, sel=-1, fast=1, over=false;
+let enemies=[], towers=[], swords=[], splats=[];
+let spawnT=0, spawned=0, waveN=0, WAVE=18;
+const $=id=>document.getElementById(id);
+
+function spawn(){ waveN++;
+  const hp = 30*Math.pow(1.10, waveN);
+  enemies.push({d:0, hp, maxhp:hp, spd:34+waveN*1.2, slow:0, r:9+Math.min(6,waveN*0.3)});
+}
+function place(x,y){ gold-=COST[sel];
+  towers.push({x,y,type:sel,cd:0,lvl:1}); sel=-1;
+  document.querySelectorAll(".seal")[0].classList.remove("sel");
+  document.querySelectorAll(".seal")[1].classList.remove("sel"); }
+
+cv.addEventListener("pointerdown",e=>{
+  if(over){ location.reload(); return; }
+  const r=cv.getBoundingClientRect(), x=(e.clientX-r.left)*W/r.width, y=(e.clientY-r.top)*H/r.height;
+  if(sel>=0){
+    if(gold<COST[sel]) return;
+    // 距山道过近或出界则拒绝
+    let ok=y>0&&y<H&&x>0&&x<W;
+    for(const s of segs){ // 点到线段距离
+      const dx=s.b[0]-s.a[0],dy=s.b[1]-s.a[1],t=Math.max(0,Math.min(1,((x-s.a[0])*dx+(y-s.a[1])*dy))/(s.L*s.L));
+      if(Math.hypot(x-(s.a[0]+dx*t),y-(s.a[1]+dy*t))<26) ok=false;
+    }
+    for(const t of towers) if(Math.hypot(t.x-x,t.y-y)<34) ok=false;
+    if(ok) place(x,y);
+  }
+});
+for(const [i,b] of [$("b0"),$("b1")].entries())
+  b.onclick=()=>{ sel=(sel===i?-1:i);
+    document.querySelectorAll(".seal").forEach((e,j)=>e.classList.toggle("sel",sel===j)); };
+$("ff").onclick=()=>{ fast=fast===1?2:1; $("ff").textContent=fast===1?"快进 ×2":"快进 ×1"; };
+
+// ===== 更新 =====
+function step(dt){
+  if(over) return;
+  spawnT-=dt;
+  if(spawnT<=0 && waveN<WAVE){ spawn(); spawnT=Math.max(0.8, 2.4-waveN*0.06); }
+  if(waveN>=WAVE && enemies.length===0){ over=true; return win(); }
+  for(const e of enemies){
+    e.slow=Math.max(0,e.slow-dt);
+    e.d += e.spd*(e.slow>0?0.55:1)*dt;
+    if(e.d>=PLEN){ e.dead=true; lives--; if(lives<=0){over=true; return lose();} }
+  }
+  enemies=enemies.filter(e=>!e.dead);
+  for(const t of towers){
+    t.cd-=dt; if(t.cd>0) continue;
+    let best=null,bd=-1;
+    for(const e of enemies){ const [ex,ey]=posAt(e.d), dd=Math.hypot(ex-t.x,ey-t.y);
+      if(dd<RANGE[t.type] && e.d>bd){ bd=e.d; best=e; } } // 打最前
+    if(best){ const [ex,ey]=posAt(best.d); t.cd=RATE[t.type];
+      swords.push({x:t.x,y:t.y,tx:ex,ty:ey,e:best,p:0,type:t.type});
+      splats.push({x:t.x,y:t.y,r:26,a:.35,type:t.type}); } // 攻击波纹
+  }
+  for(const s of swords){ s.p+=dt*6;
+    if(s.p>=1){ s.dead=true;
+      if(!s.e.dead){ s.e.hp-=DPS[s.type];
+        splats.push({x:s.tx,y:s.ty,r:8,a:.5,type:s.type,hit:1});
+        if(s.type===1) s.e.slow=1.2;
+        if(s.e.hp<=0){ s.e.dead=true; kills++; gold+=6+Math.floor(waveN*0.8);
+          splats.push({x:s.tx,y:s.ty,r:20,a:.6,ink:1}); } } } }
+  swords=swords.filter(s=>!s.dead);
+  for(const p of splats){ p.a-=dt*1.6; p.r+=dt*40; }
+  splats=splats.filter(p=>p.a>0);
+  $("gold").textContent=gold; $("lives").textContent=lives; $("kills").textContent=kills;
+  const can=gold>=COST[0],can1=gold>=COST[1];
+  $("b0").disabled=!can; $("b1").disabled=!can1;
+}
+function win(){ banner("山门无恙 · 守住了", INK); }
+function lose(){ banner("气运耗尽 · 山门失守", RED); }
+function banner(t,c){ $("tip").innerHTML=`<b style="color:${c};font-size:16px">${t}</b> —— 斩妖 ${kills} · 点击画面重开`; }
+
+// ===== 渲染（水墨） =====
+function inkStroke(w,a){ ctx.strokeStyle=`rgba(43,38,32,${a})`; ctx.lineWidth=w; ctx.lineCap="round"; }
+function draw(dt){
+  ctx.clearRect(0,0,W,H);
+  // 远山（淡墨剪影）
+  ctx.save(); ctx.globalAlpha=.12; ctx.fillStyle=INK;
+  ctx.beginPath(); ctx.moveTo(0,140);
+  ctx.quadraticCurveTo(160,20,340,120); ctx.quadraticCurveTo(470,10,640,110);
+  ctx.quadraticCurveTo(760,40,900,120); ctx.lineTo(900,0); ctx.lineTo(0,0); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0,220); ctx.quadraticCurveTo(220,120,430,200);
+  ctx.quadraticCurveTo(650,110,900,190); ctx.lineTo(900,60); ctx.lineTo(0,60); ctx.fill();
+  ctx.restore();
+  // 山道：三层笔触叠晕染
+  for(const [w,a] of [[34,.06],[24,.10],[15,.5]]){
+    ctx.beginPath(); ctx.moveTo(...PATH[0]);
+    for(let i=1;i<PATH.length;i++) ctx.lineTo(...PATH[i]);
+    inkStroke(w,a); ctx.stroke();
+  }
+  // 山道边缘枯笔
+  ctx.setLineDash([2,14]); ctx.beginPath(); ctx.moveTo(...PATH[0]);
+  for(let i=1;i<PATH.length;i++) ctx.lineTo(...PATH[i]);
+  inkStroke(1.5,.25); ctx.stroke(); ctx.setLineDash([]);
+  // 终点山门（朱印）
+  const [gx,gy]=PATH[PATH.length-1];
+  ctx.save(); ctx.translate(gx,gy);
+  ctx.fillStyle=RED; ctx.globalAlpha=.85; ctx.fillRect(-11,-11,22,22);
+  ctx.fillStyle="#e8e0ce"; ctx.font="13px serif"; ctx.globalAlpha=1;
+  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("宗",0,1); ctx.restore();
+  // 布阵波纹
+  for(const p of splats){ ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7);
+    ctx.strokeStyle=p.ink?`rgba(43,38,32,${p.a})`:(p.type?`rgba(61,107,107,${p.a})`:`rgba(158,43,37,${p.a})`);
+    ctx.lineWidth=2; ctx.stroke(); }
+  // 阵法
+  for(const t of towers){
+    const col=t.type?CYAN:RED;
+    ctx.save(); ctx.translate(t.x,t.y);
+    // 范围圈（虚）
+    ctx.beginPath(); ctx.arc(0,0,RANGE[t.type],0,7);
+    ctx.setLineDash([3,7]); ctx.strokeStyle=col+"55"; ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+    // 符阵底盘：外墨环 + 属性环 + 太极芯
+    ctx.beginPath(); ctx.arc(0,0,17,0,7); ctx.fillStyle="#e8e0ce"; ctx.fill();
+    inkStroke(3,.9); ctx.beginPath(); ctx.arc(0,0,17,0,7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,12,0,7); ctx.strokeStyle=col; ctx.lineWidth=2; ctx.stroke();
+    for(let i=0;i<6;i++){ const a=performance.now()/900+i*Math.PI/3; // 缓转符纹
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*6,Math.sin(a)*6); ctx.lineTo(Math.cos(a)*10,Math.sin(a)*10);
+      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(0,0,4.5,0,7); ctx.fillStyle=INK; ctx.fill();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(1.5,-1.5,1.5,0,7); ctx.fill();
+    ctx.restore();
+  }
+  // 妖兽：墨色剪影 + 朱砂点睛
+  for(const e of enemies){ const [x,y]=posAt(e.d);
+    ctx.save(); ctx.translate(x,y);
+    const wob=Math.sin(performance.now()/130+e.d)*1.5;
+    ctx.fillStyle=INK; ctx.globalAlpha=.92;
+    ctx.beginPath(); ctx.ellipse(0,wob*.4,e.r,e.r*.72,0,0,7); ctx.fill();     // 身
+    ctx.beginPath(); ctx.moveTo(e.r*.7,wob*.4-3); ctx.quadraticCurveTo(e.r*1.7,wob*.4-9,e.r*1.9,wob*.4-2);
+    ctx.quadraticCurveTo(e.r*1.4,wob*.4+2,e.r*.7,wob*.4+3); ctx.fill();        // 尾
+    ctx.beginPath(); ctx.ellipse(-e.r*.5,-e.r*.6+wob*.3,e.r*.5,e.r*.42,-.5,0,7); ctx.fill(); // 首
+    for(const dx of [-3,3]){ ctx.beginPath(); ctx.moveTo(dx,e.r*.6);
+      ctx.quadraticCurveTo(dx*1.4,e.r*1.5+ (dx>0?wob:-wob),dx*.8,e.r*1.8); // 足
+      inkStroke(2.4,.85); ctx.stroke(); }
+    ctx.globalAlpha=1; ctx.fillStyle=RED;                                     // 点睛
+    ctx.beginPath(); ctx.arc(-e.r*.65,-e.r*.75,1.4,0,7); ctx.fill();
+    ctx.restore();
+    // 血条改"墨痕"
+    if(e.hp<e.maxhp){ ctx.fillStyle="rgba(43,38,32,.25)"; ctx.fillRect(x-11,y-e.r-9,22,3);
+      ctx.fillStyle=INK; ctx.fillRect(x-11,y-e.r-9,22*Math.max(0,e.hp/e.maxhp),3); }
+  }
+  // 剑气 / 冰弹
+  for(const s of swords){ const x=s.x+(s.tx-s.x)*s.p, y=s.y+(s.ty-s.y)*s.p;
+    if(s.type===0){ // 剑气：细长白痕
+      const ang=Math.atan2(s.ty-s.y,s.tx-s.x);
+      ctx.save(); ctx.translate(x,y); ctx.rotate(ang);
+      ctx.strokeStyle="rgba(158,43,37,.85)"; ctx.lineWidth=2; ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(9,0); ctx.stroke();
+      ctx.strokeStyle="rgba(255,252,240,.9)"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(-5,0); ctx.lineTo(5,0); ctx.stroke(); ctx.restore();
+    } else { // 冰珠：黛青圆点拖尾
+      ctx.beginPath(); ctx.arc(x,y,3.4,0,7); ctx.fillStyle=CYAN; ctx.fill();
+      ctx.beginPath(); ctx.arc(x-(s.tx-s.x)*.04,y-(s.ty-s.y)*.04,2,0,7);
+      ctx.fillStyle=CYAN+"88"; ctx.fill(); }
+  }
+}
+
+// ===== 主循环 =====
+let last=performance.now();
+(function loop(now){ let dt=Math.min(.05,(now-last)/1000)*fast; last=now;
+  for(let i=0;i<fast;i++) step(dt/fast); draw(dt); requestAnimationFrame(loop); })(last);
+</script>
+</body>
+</html>

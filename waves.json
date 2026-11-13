@@ -1,0 +1,601 @@
+{
+ "start_gold": 120,
+ "tower": {
+  "cost": 40,
+  "dps": 20
+ },
+ "kill_zone": 12,
+ "efficiency": 0.6,
+ "waves": [
+  {
+   "clear_bonus": 22,
+   "groups": [
+    {
+     "hp": 36,
+     "count": 6,
+     "speed": 2,
+     "spacing": 1.1,
+     "bounty": 6,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 24,
+   "groups": [
+    {
+     "hp": 41,
+     "count": 8,
+     "speed": 2.04,
+     "spacing": 1,
+     "bounty": 6,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 26,
+   "groups": [
+    {
+     "hp": 46,
+     "count": 9,
+     "speed": 2.07,
+     "spacing": 0.9,
+     "bounty": 6,
+     "armor": 0
+    },
+    {
+     "hp": 46,
+     "count": 3,
+     "speed": 2.07,
+     "spacing": 0.7,
+     "bounty": 6,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 28,
+   "groups": [
+    {
+     "hp": 52,
+     "count": 12,
+     "speed": 2.11,
+     "spacing": 0.8,
+     "bounty": 6,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 30,
+   "groups": [
+    {
+     "hp": 28,
+     "count": 6,
+     "speed": 4.93,
+     "spacing": 0.8,
+     "bounty": 8,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 32,
+   "groups": [
+    {
+     "hp": 67,
+     "count": 10,
+     "speed": 2.18,
+     "spacing": 0.8,
+     "bounty": 7,
+     "armor": 0
+    },
+    {
+     "hp": 31,
+     "count": 4,
+     "speed": 5.01,
+     "spacing": 0.6,
+     "bounty": 8,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 34,
+   "groups": [
+    {
+     "hp": 75,
+     "count": 12,
+     "speed": 2.22,
+     "spacing": 0.7,
+     "bounty": 7,
+     "armor": 0
+    },
+    {
+     "hp": 35,
+     "count": 6,
+     "speed": 5.1,
+     "spacing": 0.5,
+     "bounty": 8,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 36,
+   "groups": [
+    {
+     "hp": 170,
+     "count": 5,
+     "speed": 1.69,
+     "spacing": 1.3,
+     "bounty": 14,
+     "armor": 0.5
+    }
+   ]
+  },
+  {
+   "clear_bonus": 38,
+   "groups": [
+    {
+     "hp": 84,
+     "count": 5,
+     "speed": 3.15,
+     "spacing": 1.2,
+     "bounty": 12,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 60,
+   "groups": [
+    {
+     "hp": 2173,
+     "count": 1,
+     "speed": 1.22,
+     "spacing": 1,
+     "bounty": 108,
+     "armor": 0.3
+    },
+    {
+     "hp": 109,
+     "count": 8,
+     "speed": 2.32,
+     "spacing": 0.7,
+     "bounty": 7,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 40,
+   "groups": [
+    {
+     "hp": 73,
+     "count": 14,
+     "speed": 3.19,
+     "spacing": 0.45,
+     "bounty": 5,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 42,
+   "groups": [
+    {
+     "hp": 82,
+     "count": 16,
+     "speed": 3.23,
+     "spacing": 0.4,
+     "bounty": 5,
+     "armor": 0
+    },
+    {
+     "hp": 65,
+     "count": 6,
+     "speed": 5.51,
+     "spacing": 0.5,
+     "bounty": 9,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 44,
+   "groups": [
+    {
+     "hp": 313,
+     "count": 7,
+     "speed": 1.82,
+     "spacing": 1.1,
+     "bounty": 15,
+     "armor": 0.5
+    },
+    {
+     "hp": 157,
+     "count": 10,
+     "speed": 2.43,
+     "spacing": 0.6,
+     "bounty": 8,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 46,
+   "groups": [
+    {
+     "hp": 636,
+     "count": 4,
+     "speed": 1.42,
+     "spacing": 1.6,
+     "bounty": 20,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 48,
+   "groups": [
+    {
+     "hp": 175,
+     "count": 8,
+     "speed": 3.44,
+     "spacing": 0.9,
+     "bounty": 13,
+     "armor": 0
+    },
+    {
+     "hp": 119,
+     "count": 12,
+     "speed": 3.38,
+     "spacing": 0.4,
+     "bounty": 5,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 52,
+   "groups": [
+    {
+     "hp": 452,
+     "count": 9,
+     "speed": 1.91,
+     "spacing": 0.9,
+     "bounty": 16,
+     "armor": 0.5
+    },
+    {
+     "hp": 813,
+     "count": 4,
+     "speed": 1.46,
+     "spacing": 1.3,
+     "bounty": 21,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 54,
+   "groups": [
+    {
+     "hp": 120,
+     "count": 14,
+     "speed": 5.92,
+     "spacing": 0.35,
+     "bounty": 9,
+     "armor": 0
+    },
+    {
+     "hp": 152,
+     "count": 14,
+     "speed": 3.48,
+     "spacing": 0.35,
+     "bounty": 5,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 56,
+   "groups": [
+    {
+     "hp": 289,
+     "count": 22,
+     "speed": 2.61,
+     "spacing": 0.45,
+     "bounty": 8,
+     "armor": 0
+    },
+    {
+     "hp": 253,
+     "count": 7,
+     "speed": 3.59,
+     "spacing": 0.9,
+     "bounty": 14,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 60,
+   "groups": [
+    {
+     "hp": 1173,
+     "count": 7,
+     "speed": 1.52,
+     "spacing": 1.1,
+     "bounty": 22,
+     "armor": 0
+    },
+    {
+     "hp": 653,
+     "count": 8,
+     "speed": 1.99,
+     "spacing": 0.9,
+     "bounty": 17,
+     "armor": 0.5
+    }
+   ]
+  },
+  {
+   "clear_bonus": 90,
+   "groups": [
+    {
+     "hp": 7375,
+     "count": 2,
+     "speed": 1.41,
+     "spacing": 3,
+     "bounty": 126,
+     "armor": 0.3
+    },
+    {
+     "hp": 219,
+     "count": 14,
+     "speed": 3.62,
+     "spacing": 0.35,
+     "bounty": 6,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 62,
+   "groups": [
+    {
+     "hp": 365,
+     "count": 10,
+     "speed": 3.74,
+     "spacing": 0.8,
+     "bounty": 14,
+     "armor": 0
+    },
+    {
+     "hp": 195,
+     "count": 12,
+     "speed": 6.26,
+     "spacing": 0.35,
+     "bounty": 10,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 66,
+   "groups": [
+    {
+     "hp": 942,
+     "count": 12,
+     "speed": 2.07,
+     "spacing": 0.7,
+     "bounty": 17,
+     "armor": 0.5
+    },
+    {
+     "hp": 1692,
+     "count": 6,
+     "speed": 1.58,
+     "spacing": 1,
+     "bounty": 23,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 68,
+   "groups": [
+    {
+     "hp": 316,
+     "count": 26,
+     "speed": 3.77,
+     "spacing": 0.3,
+     "bounty": 6,
+     "armor": 0
+    },
+    {
+     "hp": 466,
+     "count": 9,
+     "speed": 3.84,
+     "spacing": 0.8,
+     "bounty": 15,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 72,
+   "groups": [
+    {
+     "hp": 282,
+     "count": 20,
+     "speed": 6.5,
+     "spacing": 0.3,
+     "bounty": 10,
+     "armor": 0
+    },
+    {
+     "hp": 1202,
+     "count": 10,
+     "speed": 2.12,
+     "spacing": 0.7,
+     "bounty": 18,
+     "armor": 0.5
+    }
+   ]
+  },
+  {
+   "clear_bonus": 76,
+   "groups": [
+    {
+     "hp": 2442,
+     "count": 9,
+     "speed": 1.65,
+     "spacing": 0.9,
+     "bounty": 24,
+     "armor": 0
+    },
+    {
+     "hp": 403,
+     "count": 22,
+     "speed": 3.87,
+     "spacing": 0.3,
+     "bounty": 6,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 80,
+   "groups": [
+    {
+     "hp": 672,
+     "count": 14,
+     "speed": 3.99,
+     "spacing": 0.6,
+     "bounty": 15,
+     "armor": 0
+    },
+    {
+     "hp": 1535,
+     "count": 12,
+     "speed": 2.17,
+     "spacing": 0.6,
+     "bounty": 18,
+     "armor": 0.5
+    }
+   ]
+  },
+  {
+   "clear_bonus": 84,
+   "groups": [
+    {
+     "hp": 407,
+     "count": 24,
+     "speed": 6.75,
+     "spacing": 0.25,
+     "bounty": 11,
+     "armor": 0
+    },
+    {
+     "hp": 515,
+     "count": 24,
+     "speed": 3.96,
+     "spacing": 0.28,
+     "bounty": 6,
+     "armor": 0
+    },
+    {
+     "hp": 867,
+     "count": 20,
+     "speed": 2.94,
+     "spacing": 0.35,
+     "bounty": 9,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 88,
+   "groups": [
+    {
+     "hp": 1961,
+     "count": 16,
+     "speed": 2.23,
+     "spacing": 0.5,
+     "bounty": 19,
+     "armor": 0.5
+    },
+    {
+     "hp": 3523,
+     "count": 10,
+     "speed": 1.71,
+     "spacing": 0.8,
+     "bounty": 25,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 92,
+   "groups": [
+    {
+     "hp": 969,
+     "count": 16,
+     "speed": 4.13,
+     "spacing": 0.5,
+     "bounty": 16,
+     "armor": 0
+    },
+    {
+     "hp": 658,
+     "count": 30,
+     "speed": 4.05,
+     "spacing": 0.25,
+     "bounty": 6,
+     "armor": 0
+    },
+    {
+     "hp": 519,
+     "count": 18,
+     "speed": 6.9,
+     "spacing": 0.25,
+     "bounty": 11,
+     "armor": 0
+    }
+   ]
+  },
+  {
+   "clear_bonus": 140,
+   "groups": [
+    {
+     "hp": 25034,
+     "count": 3,
+     "speed": 1.57,
+     "spacing": 2.5,
+     "bounty": 144,
+     "armor": 0.3
+    },
+    {
+     "hp": 2503,
+     "count": 14,
+     "speed": 2.25,
+     "spacing": 0.5,
+     "bounty": 19,
+     "armor": 0.5
+    },
+    {
+     "hp": 1095,
+     "count": 12,
+     "speed": 4.13,
+     "spacing": 0.6,
+     "bounty": 16,
+     "armor": 0
+    }
+   ]
+  }
+ ]
+}

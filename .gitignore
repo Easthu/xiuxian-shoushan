@@ -1,0 +1,4 @@
+*.log
+tmp/
+.zcode/
+.DS_Store
