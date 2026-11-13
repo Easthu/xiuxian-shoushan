@@ -299,8 +299,35 @@
   }
   function towerRange(t) {
     const T = TOWERS[t.type];
-    if (T) return T.range + (t.lvl - 1) * 10 + t.rangeBonus;
+    if (T) return T.range + (t.lvl - 1) * 10 + (t.rangeBonus || 0);
     return 0;
+  }
+
+  // ---------- 升级 / 出售 / 索敌切换（里程碑3） ----------
+  function upgradeTower(g, id) {
+    const t = g.towers.find(x => x.id === id);
+    if (!t || t.lvl >= 3) return { ok: false, why: "已达三级" };
+    const T = TOWERS[t.type];
+    if (!T) return { ok: false, why: "融合阵不可升" };
+    const cost = T.up[t.lvl];
+    if (g.gold < cost) return { ok: false, why: "灵石不足" };
+    g.gold -= cost; t.spent += cost; t.lvl++;
+    return { ok: true, cost, lvl: t.lvl };
+  }
+  function sellTower(g, id) {
+    const i = g.towers.findIndex(x => x.id === id);
+    if (i < 0) return { ok: false, refund: 0 };
+    const t = g.towers[i];
+    const refund = Math.round(t.spent * 0.7);
+    g.gold += refund;
+    g.towers.splice(i, 1);
+    return { ok: true, refund };
+  }
+  function setTargetMode(g, id, mode) {
+    const t = g.towers.find(x => x.id === id);
+    if (!t || !["first", "last", "closest", "strongest", "weakest"].includes(mode)) return false;
+    t.mode = mode;
+    return true;
   }
   // 融合阵的战斗属性（里程碑4启用；这里先给占位，避免 acquire 崩）
   function FUSION_TOWER_STATS(t) { return { ground: false, air: false }; }
@@ -511,6 +538,7 @@
     PAL, TOWERS, BASE_KEYS, FOES, WAVES, HP_GROWTH,
     createGame, canPlace, placeTower, spawnFoe, startWave, wavePreview, gameStep,
     acquire, towerRange, towerDmg, foePos, hitEnemy, TOWER_R, curveSpec, bountyOf,
+    upgradeTower, sellTower, setTargetMode,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else global.Core = Core;

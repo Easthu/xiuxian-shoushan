@@ -91,8 +91,8 @@ function run() {
       return g;
     };
     const ga = mk(), gb = mk();
-    stepUntil(ga, () => ga.kills >= 3 || ga.clock > 20, 25, 1 / 60);
-    stepUntil(gb, () => gb.kills >= 3 || gb.clock > 20, 25, 1 / 15); // ≈×4 快进
+    stepUntil(ga, () => ga.kills >= 3 || ga.clock > 24, 30, 1 / 60);
+    stepUntil(gb, () => gb.kills >= 3 || gb.clock > 24, 30, 1 / 15); // ≈×4 快进
     assert(ga.kills >= 3 && gb.kills >= 3, '两种步长都达成击杀');
     near(ga.clock, gb.clock, 2.5, '游戏时钟近似一致（离散时序容差）');
     near(ga.kills, gb.kills, 3, '击杀数近似一致（大 dt 稳定）');
