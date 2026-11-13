@@ -99,6 +99,8 @@
   <div id="wrap">
     <canvas id="cv" width="960" height="600"></canvas>
     <div id="tpanel"></div>
+    <div id="wavebar" style="display:none;position:absolute;left:50%;top:20px;transform:translateX(-50%);width:260px;height:3px;background:rgba(43,38,32,.15);z-index:11"><div style="height:100%;width:0;background:rgba(158,43,37,.8)"></div></div>
+    <div id="countdown" style="display:none;position:absolute;left:50%;top:32px;transform:translateX(-50%);font-size:13px;color:#2b2620;z-index:11;letter-spacing:1px;white-space:nowrap"></div>
     <div class="wlabel" id="wlabel"></div>
     <div class="toast" id="toast"></div>
   </div>
@@ -113,20 +115,11 @@
   <span id="tip">选阵 → 点击山道旁布阵 ｜ 拖动一座阵法到相邻阵法上融合（耗灵气）｜ 点击阵法强化/渡劫/出售</span>
 </div>
 
+<script src="vendor/three.min.js"></script>
 <script src="game_core.js"></script>
+
 <script>
 "use strict";
-/* ================= 修仙守山 · 渲染层 =================
- * 只读 Core 状态 + 事件流；全部程序化水墨绘制，零外部素材。
- * 分块：FX 粒子 / BG 氛围 / FOE 妖兽 / TOWER 阵法 / PROJ 弹道 / UI / INPUT / AUDIO
- */
-const C = window.Core;
-const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-const W = cv.width, H = cv.height;
-const INK = "#2b2620", RED = "#9e2b25", CYAN = "#3d6b6b", GOLD = "#a8842c", GREEN = "#5a6b3d", PURPLE = "#5d3d6b", PAPER = "#e8e0ce";
-const $ = id => document.getElementById(id);
-const TAU = Math.PI * 2;
-
 /* ---------------- 音效（WebAudio 程序化） ---------------- */
 const AudioFX = (() => {
   let ac = null, master = null, on = true, windNode = null;
@@ -205,903 +198,849 @@ const AudioFX = (() => {
   };
 })();
 
+
+/* ---------------- 全局桥接 ---------------- */
+const C = window.Core;
+const cv = document.getElementById("cv");
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+
 /* ---------------- 游戏状态 ---------------- */
 let g = C.createGame();
-let selKey = null;          // 选中的待布阵型
+let selKey = null;
 let hoverTower = null, selTower = null;
-let dragTower = null, dragDX = 0, dragDY = 0;   // 拖拽融合
-let dragOX = 0, dragOY = 0;                     // 拖拽原位（未融合弹回）
+let dragTower = null, dragDX = 0, dragDY = 0;
+let dragOX = 0, dragOY = 0;
 let mouseX = -99, mouseY = -99;
 let speed = 1;
-let shake = 0;              // 震屏强度
-let floaters = [];          // 飘字
-let fxLines = [];           // 短命特效线（闪电/斩痕/符阵圈），渲染末段绘制避免被背景覆盖
+let shake = 0;
 let codexSaved = JSON.parse(localStorage.getItem(C.SAVE_KEY) || "null");
-let newCodexKeys = new Set(Object.keys((codexSaved && codexSaved.codex) || {}));  // 本会话已见
 
-/* ---------------- 粒子系统 ---------------- */
-const parts = [];
-function P(x, y, o) { if (parts.length < 900) parts.push(Object.assign({ x, y, vx: 0, vy: 0, life: 1, decay: 1.6, r: 2, col: INK, type: "dot", grav: 0 }, o)); }
-function stepParts(dt) {
-  for (const p of parts) {
-    p.life -= dt * p.decay;
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    p.vy += p.grav * dt;
-    if (p.spin) p.a += p.spin * dt;
-  }
-  for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1);
-}
-function drawParts() {
-  for (const p of parts) {
-    ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
-    if (p.type === "dot") { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (0.4 + 0.6 * p.life), 0, TAU); ctx.fill(); }
-    else if (p.type === "shard") { // 冰晶/墨片
-      ctx.translate(p.x, p.y); ctx.rotate(p.a || 0);
-      ctx.fillStyle = p.col; ctx.fillRect(-p.r, -p.r * .4, p.r * 2, p.r * .8);
-    } else if (p.type === "ring") { // 冲击环
-      ctx.strokeStyle = p.col; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (2 - p.life * 1.4), 0, TAU); ctx.stroke();
-    } else if (p.type === "ink") { // 墨晕
-      ctx.fillStyle = p.col;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + (1 - p.life) * 2.2), 0, TAU); ctx.fill();
-    } else if (p.type === "glow") {
-      const gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.4);
-      gr.addColorStop(0, p.col); gr.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2.4, 0, TAU); ctx.fill();
-    }
-    ctx.restore();
-  }
-}
-// 事件驱动的爆发特效
-function burstKill(x, y, big) {
-  const n = big ? 42 : 14;
-  for (let i = 0; i < n; i++) {
-    const a = Math.random() * TAU, sp = (big ? 130 : 70) * (0.3 + Math.random());
-    P(x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 20, r: big ? 3.6 : 2.4, col: "rgba(43,38,32,.8)", decay: 1.4, grav: 120, life: .8 + Math.random() * .5 });
-  }
-  P(x, y, { type: "ink", r: big ? 16 : 8, col: "rgba(43,38,32,.30)", decay: 1.8 });
-  P(x, y, { type: "ring", r: big ? 26 : 12, col: "rgba(43,38,32,.5)", decay: 2.2 });
-  if (big) { shake = Math.max(shake, 9); }
-}
-function burstHit(x, y, ele) {
-  const cols = { metal: RED, fire: "#c45a28", ice: CYAN, thunder: GOLD, wind: GREEN, qi: GOLD };
-  const col = cols[ele] || INK;
-  for (let i = 0; i < 4; i++) {
-    const a = Math.random() * TAU, sp = 40 + Math.random() * 60;
-    P(x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 1.6, col, decay: 2.4 });
-  }
-}
-function floatText(x, y, text, col, size) {
-  floaters.push({ x, y, text, col: col || "#a8842c", size: size || 13, life: 1 });
-}
+/* ================= R3D · three.js 水墨 3D 渲染层 ================= */
+const R3D = (() => {
+  const INK = 0x2b2620, PAPER = 0xe8e0ce, RED = 0x9e2b25, CYAN = 0x3d6b6b, GOLD = 0xa8842c, GREEN = 0x5a6b3d, PURPLE = 0x5d3d6b;
+  const cv = document.getElementById("cv");
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setSize(960, 600, false);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
 
-/* ---------------- 背景（程序化水墨氛围） ---------------- */
-// 固定随机装饰（每局同构）
-const R01 = (i) => { const x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); };
-const decor = { grass: [], pines: [], rocks: [], stains: [], bamboo: [], lanterns: [] };
-(function initDecor() {
-  // 山道两侧苔点/枯草
-  for (let i = 0; i < 130; i++) {
-    const d = R01(i) * C.PLEN, side = R01(i + 99) < .5 ? 1 : -1;
-    const off = 40 + R01(i + 7) * 90;
-    const [x, y] = C.posAt(d), n = C.pathNormal(d);
-    decor.grass.push({ x: x + n[0] * off * side, y: y + n[1] * off * side, s: 3 + R01(i + 3) * 5, lean: (R01(i + 11) - .5) * .8, i });
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xece4d2);
+  scene.fog = new THREE.Fog(0xe8e0ce, 820, 1500);
+
+  const camera = new THREE.PerspectiveCamera(44, 960 / 600, 1, 2600);
+  const camBase = new THREE.Vector3(480, 470, 860);
+  camera.position.copy(camBase);
+  camera.lookAt(480, 0, 300);
+
+  // ---------- 光照（暖主光 + 天青地墨半球 + 环境） ----------
+  scene.add(new THREE.AmbientLight(0xfff4e0, 0.42));
+  const hemi = new THREE.HemisphereLight(0xcfd8d8, 0x5a5148, 0.38);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffe8c0, 0.95);
+  sun.position.set(680, 620, 120);
+  sun.target.position.set(480, 0, 300);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -560; sun.shadow.camera.right = 560;
+  sun.shadow.camera.top = 420; sun.shadow.camera.bottom = -420;
+  sun.shadow.camera.near = 100; sun.shadow.camera.far = 1400;
+  sun.shadow.bias = -0.0015;
+  scene.add(sun); scene.add(sun.target);
+
+  // ---------- 程序化噪声（无依赖 value-noise fbm） ----------
+  function hash(ix, iz) { const s = Math.sin(ix * 127.1 + iz * 311.7) * 43758.5453; return s - Math.floor(s); }
+  function vnoise(x, z) {
+    const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+    const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+    const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1);
+    return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
   }
-  // 弯角松（路径折点附近）
-  for (let i = 1; i < C.PATH.length - 1; i++) {
-    const a = C.PATH[i];
-    const n = C.pathNormal(0);
-    decor.pines.push({ x: a[0] + (R01(i * 3) - .5) * 160, y: a[1] + (R01(i * 5 + 2) - .5) * 120, s: .7 + R01(i * 7) * .7, i });
+  function fbm(x, z) { return vnoise(x * .012, z * .012) * .6 + vnoise(x * .045, z * .045) * .3 + vnoise(x * .11, z * .11) * .1; }
+  // 地形高度：距山道近处压平（2D 距离）
+  function elev(x, z) {
+    const d = C.pathDistTo(x, z);
+    const flat = Math.min(1, Math.max(0, (d - 26) / 60)); // 26px 内全平，86px 外全幅
+    const n = fbm(x + 300, z + 200) - 0.5;
+    return Math.max(0, n * 26 * flat + flat * 5);
   }
-  // 散石
-  for (let i = 0; i < 16; i++) {
-    const d = R01(i + 500) * C.PLEN, side = R01(i + 600) < .5 ? 1 : -1;
-    const off = 55 + R01(i + 700) * 110;
-    const [x, y] = C.posAt(d), n = C.pathNormal(d);
-    decor.rocks.push({ x: x + n[0] * off * side, y: y + n[1] * off * side, s: 4 + R01(i + 800) * 7, i });
-  }
-  // 宣纸晕渍（大面积年代感）
-  for (let i = 0; i < 7; i++) {
-    decor.stains.push({ x: R01(i + 900) * W, y: R01(i + 910) * H, r: 60 + R01(i + 920) * 120, a: .018 + R01(i + 930) * .02, ro: R01(i + 940) * Math.PI });
-  }
-  // 竹丛（左上，避开路径首段 y=110 以下才放）
-  for (let i = 0; i < 9; i++) {
-    decor.bamboo.push({ x: 40 + R01(i + 950) * 90, y: 210 + R01(i + 960) * 90, h: 70 + R01(i + 970) * 60, ph: R01(i + 980) * TAU, lean: (R01(i + 990) - .5) * .3 });
-  }
-  // 石灯笼（沿山道等距，仪式感）
-  for (let d = 260; d < C.PLEN - 200; d += 430) {
-    const n = C.pathNormal(d), side = ((d / 430) | 0) % 2 ? 1 : -1;
-    const [x, y] = C.posAt(d);
-    decor.lanterns.push({ x: x + n[0] * 33 * side, y: y + n[1] * 33 * side, ph: d * .01 });
-  }
-})();
-let geese = []; // 雁阵
-(function initGeese() {
-  for (let k = 0; k < 3; k++) geese.push({ x: -200 - k * 500, y: 60 + k * 38, sp: 14 + k * 5, n: 4 + Math.floor(R01(k) * 4), ph: R01(k + 50) * TAU });
-})();
-function drawBG(t) {
-  // 底色渐变宣纸
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#ece4d2"); bg.addColorStop(.7, "#e8e0ce"); bg.addColorStop(1, "#e2d7c0");
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-  // 宣纸晕渍（年代感）
-  for (const st of decor.stains) {
-    const gr = ctx.createRadialGradient(st.x, st.y, 0, st.x, st.y, st.r);
-    gr.addColorStop(0, `rgba(139,117,78,${st.a})`); gr.addColorStop(.7, `rgba(139,117,78,${st.a * .5})`); gr.addColorStop(1, "rgba(139,117,78,0)");
-    ctx.save(); ctx.translate(st.x, st.y); ctx.rotate(st.ro); ctx.scale(1, .7);
-    ctx.translate(-st.x, -st.y);
-    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
-  // 淡月（右上，光晕+云遮）
-  ctx.save();
-  const mx = 876, my = 64;
-  const halo = ctx.createRadialGradient(mx, my, 0, mx, my, 64);
-  halo.addColorStop(0, "rgba(198,168,96,.30)"); halo.addColorStop(.45, "rgba(198,168,96,.10)"); halo.addColorStop(1, "rgba(198,168,96,0)");
-  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(mx, my, 64, 0, TAU); ctx.fill();
-  ctx.fillStyle = "rgba(212,186,120,.55)"; ctx.beginPath(); ctx.arc(mx, my, 22, 0, TAU); ctx.fill();
-  ctx.fillStyle = "rgba(232,224,206,.8)"; ctx.beginPath(); ctx.arc(mx - 5, my - 4, 17, 0, TAU); ctx.fill(); // 月面留白
-  ctx.globalAlpha = .12; ctx.fillStyle = INK; // 月面皴点
-  ctx.beginPath(); ctx.arc(mx + 6, my + 5, 3, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.arc(mx - 2, my + 9, 2, 0, TAU); ctx.fill();
-  ctx.restore();
-  // 远山三层
-  ctx.save();
-  const mts = [
-    { a: .07, yo: 0, k: 1.15, dy: 0 }, { a: .10, yo: 30, k: .85, dy: 26 }, { a: .16, yo: 74, k: .6, dy: 55 }
-  ];
-  mts.forEach((m, mi) => {
-    ctx.globalAlpha = m.a; ctx.fillStyle = INK;
-    ctx.beginPath(); ctx.moveTo(-20, 160 + m.yo);
-    for (let x = -20; x <= W + 20; x += 60) {
-      const h = Math.sin(x * .008 * m.k + mi * 2.4) * 66 + Math.sin(x * .021 + mi) * 22;
-      ctx.quadraticCurveTo(x + 30, 60 + m.yo - h, x + 60, 130 + m.yo - h * .4);
+
+  // ---------- 地形（宣纸色起伏 + 顶点色） ----------
+  (function buildTerrain() {
+    const geo = new THREE.PlaneGeometry(960, 600, 110, 72);
+    geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const cPaper = new THREE.Color(0xe6ddc8), cHill = new THREE.Color(0x9d9484), cInk = new THREE.Color(0x6b6355);
+    const tmp = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i) + 480, z = pos.getZ(i) + 300; // plane 中心在原点 → 平移到地图坐标
+      const h = elev(x, z);
+      pos.setY(i, h);
+      pos.setX(i, x - 480); pos.setZ(i, z - 300); // 保持原点中心，几何居中（位置 mesh 平移 480,0,300）
+      const t = Math.min(1, h / 18);
+      tmp.copy(cPaper).lerp(cHill, t * .8).lerp(cInk, Math.max(0, t - .55) * .9);
+      // 淡noise斑驳
+      const sp = (vnoise(x * .2, z * .2) - .5) * .07;
+      colors[i * 3] = Math.min(1, Math.max(0, tmp.r + sp));
+      colors[i * 3 + 1] = Math.min(1, Math.max(0, tmp.g + sp));
+      colors[i * 3 + 2] = Math.min(1, Math.max(0, tmp.b + sp));
     }
-    ctx.lineTo(W + 20, -40); ctx.lineTo(-20, -40); ctx.fill();
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .96, metalness: 0 });
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(480, 0, 300);
+    m.receiveShadow = true;
+    scene.add(m);
+  })();
+
+  // ---------- 山道（沿曲线条带 + 石阶 + 枯笔边） ----------
+  const roadPts = C.PATH.map(p => new THREE.Vector3(p[0], 0.02, p[1]));
+  const roadCurve = new THREE.CatmullRomCurve3(roadPts, false, "catmullrom", 0.08);
+  (function buildRoad() {
+    const N = 320, W1 = 17, W2 = 13;
+    const posArr = [], uvArr = [], idx = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const p = roadCurve.getPointAt(t);
+      const tan = roadCurve.getTangentAt(t);
+      const nx = -tan.z, nz = tan.x; // 法向
+      posArr.push(p.x + nx * W1, 0.05, p.z + nz * W1, p.x - nx * W1, 0.05, p.z - nz * W1);
+      posArr.push(p.x + nx * W2, 0.14, p.z + nz * W2, p.x - nx * W2, 0.14, p.z - nz * W2);
+      const u = t * 40;
+      uvArr.push(u, 0, u, 1, u, 0, u, 1);
+      if (i < N) {
+        const b = i * 4;
+        idx.push(b, b + 4, b + 1, b + 1, b + 4, b + 5, // 底宽边
+                 b + 1, b + 5, b + 2, b + 2, b + 5, b + 6, // 斜面
+                 b + 2, b + 6, b + 3, b + 3, b + 6, b + 7); // 面顶
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(posArr, 3));
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvArr, 2));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x574f45, roughness: .92 });
+    const road = new THREE.Mesh(geo, mat);
+    road.receiveShadow = true; road.castShadow = false;
+    scene.add(road);
+    // 枯笔晕边（两侧半透明宽条）
+    const edgeGeo = new THREE.BufferGeometry();
+    const epos = [], eidx = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const p = roadCurve.getPointAt(t), tan = roadCurve.getTangentAt(t);
+      const nx = -tan.z, nz = tan.x;
+      for (const side of [1, -1]) {
+        epos.push(p.x + nx * W1 * side, 0.045, p.z + nz * W1 * side, p.x + nx * (W1 + 13) * side, 0.045, p.z + nz * (W1 + 13) * side);
+      }
+      if (i < N) {
+        const b = i * 4;
+        eidx.push(b, b + 4, b + 2, b + 2, b + 4, b + 6, b + 1, b + 5, b + 3, b + 3, b + 5, b + 7);
+      }
+    }
+    edgeGeo.setAttribute("position", new THREE.Float32BufferAttribute(epos, 3));
+    edgeGeo.setIndex(eidx);
+    const edgeMat = new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: .13, depthWrite: false });
+    scene.add(new THREE.Mesh(edgeGeo, edgeMat));
+    // 石阶（沿曲线等距小贴片）
+    const stepGeo = new THREE.CircleGeometry(2.6, 8);
+    stepGeo.rotateX(-Math.PI / 2);
+    const steps = new THREE.InstancedMesh(stepGeo, new THREE.MeshStandardMaterial({ color: 0x3a342d, roughness: 1 }), Math.ceil(C.PLEN / 34) + 4);
+    const M = new THREE.Matrix4();
+    let si = 0;
+    for (let d = 34; d < C.PLEN - 10; d += 34) {
+      const [x, y] = C.posAt(d), n = C.pathNormal(d);
+      const side = (Math.floor(d / 34) % 2) ? 5 : -5;
+      M.setPosition(x + n[0] * side, 0.17, y + n[1] * side);
+      steps.setMatrixAt(si++, M);
+    }
+    steps.count = si;
+    scene.add(steps);
+  })();
+
+  // ---------- 远山剪影（多层山脊薄片，融雾） ----------
+  (function buildRidges() {
+    for (let layer = 0; layer < 3; layer++) {
+      const width = 1500, H2 = 150 + layer * 60;
+      const shape = new THREE.Shape();
+      shape.moveTo(-width / 2, 0);
+      let first = true;
+      for (let x = -width / 2; x <= width / 2; x += 40) {
+        const h = Math.abs(Math.sin(x * .006 + layer * 2.1) * 90 + Math.sin(x * .017 + layer) * 34 + (hash(Math.round(x / 40) + layer * 7, 3) - .5) * 40);
+        const y = 24 + h * (1 - layer * .18);
+        if (first) { shape.lineTo(x, y); first = false; } else shape.lineTo(x, y);
+      }
+      shape.lineTo(width / 2, 0); shape.closePath();
+      const geo = new THREE.ShapeGeometry(shape);
+      const alpha = [.30, .18, .10][layer];
+      const mat = new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: alpha, depthWrite: false, fog: false });
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(480 - layer * 60, 8, 285 - layer * 130 - 90);
+      scene.add(m);
+      // 后侧第二排（画面上远端）
+      const m2 = m.clone(); m2.position.x = 480 + layer * 90; m2.position.z = 300 + 340 + layer * 120;
+      m2.rotation.y = Math.PI;
+      scene.add(m2);
+    }
+  })();
+
+  // ---------- 溪流（右缘波光带 + 闪点） ----------
+  const streamGlints = [];
+  (function buildStream() {
+    const pts = [];
+    for (let i = 0; i <= 30; i++) {
+      const t = i / 30;
+      pts.push(new THREE.Vector3(880 + Math.sin(t * 5.2) * 22, 0.06, 30 + t * 545));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const N = 60, posArr = [], idx = [];
+    for (let i = 0; i <= N; i++) {
+      const p = curve.getPointAt(i / N), tan = curve.getTangentAt(i / N);
+      const nx = -tan.z, nz = tan.x;
+      posArr.push(p.x + nx * 8, .06, p.z + nz * 8, p.x - nx * 8, .06, p.z - nz * 8);
+      if (i < N) { const b = i * 2; idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(posArr, 3));
+    geo.setIndex(idx);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x5d8b8b, transparent: true, opacity: .30, depthWrite: false });
+    scene.add(new THREE.Mesh(geo, mat));
+    // streamGlints 已提升至 IIFE 顶层
+    const dotGeo = new THREE.CircleGeometry(2.2, 6); dotGeo.rotateX(-Math.PI / 2);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0x9fd8d3, transparent: true, opacity: .8, depthWrite: false });
+    for (let i = 0; i < 9; i++) {
+      const d = new THREE.Mesh(dotGeo, dotMat.clone());
+      const t = i / 9;
+      const p = curve.getPointAt((t + .02) % 1);
+      d.position.set(p.x, .09, p.z);
+      d.userData.ph = i * 1.7;
+      scene.add(d); streamGlints.push(d);
+    }
+  })();
+
+  // ---------- 淡月（球 + 程序辉光 sprite） ----------
+  (function buildMoon() {
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(17, 24, 18),
+      new THREE.MeshBasicMaterial({ color: 0xd8bc8a, fog: false }));
+    moon.position.set(600, 135, 40);
+    scene.add(moon);
+    const cnv2 = document.createElement("canvas"); cnv2.width = cnv2.height = 128;
+    const c2 = cnv2.getContext("2d");
+    const gr = c2.createRadialGradient(64, 64, 4, 64, 64, 64);
+    gr.addColorStop(0, "rgba(216,188,138,.55)"); gr.addColorStop(.5, "rgba(216,188,138,.16)"); gr.addColorStop(1, "rgba(216,188,138,0)");
+    c2.fillStyle = gr; c2.fillRect(0, 0, 128, 128);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cnv2), transparent: true, fog: false, depthWrite: false }));
+    spr.scale.set(95, 95, 1);
+    spr.position.copy(moon.position);
+    scene.add(spr);
+  })();
+
+  // ---------- 装饰：松 / 竹 / 石灯笼 / 晕渍云 ---------- 
+  const decoPines = [], decoBamboo = [], decoLanterns = [];
+  (function buildDecor() {
+    const pineMat = new THREE.MeshStandardMaterial({ color: 0x39402f, roughness: .95 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: .95 });
+    const R01 = i => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
+    // 松（弯角旁）
+    for (let i = 1; i < C.PATH.length - 1; i++) {
+      const a = C.PATH[i];
+      for (let k = 0; k < 2; k++) {
+        const x = a[0] + (R01(i * 3 + k) - .5) * 170, z = a[1] + (R01(i * 5 + k + 2) - .5) * 130;
+        if (C.pathDistTo(x, z) < 46) continue;
+        const grp = new THREE.Group();
+        const s = .8 + R01(i + k) * .8;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * s, 1.7 * s, 9 * s, 6), trunkMat);
+        trunk.position.y = 4.5 * s; trunk.castShadow = true; grp.add(trunk);
+        for (let l = 0; l < 3; l++) {
+          const cone = new THREE.Mesh(new THREE.ConeGeometry((7.5 - l * 2) * s, 6.5 * s, 7), pineMat);
+          cone.position.y = (8 + l * 4.2) * s; cone.castShadow = true; grp.add(cone);
+        }
+        grp.position.set(x, elev(x, z) - .5, z);
+        grp.userData.ph = R01(i * k + 9) * TAU;
+        scene.add(grp); decoPines.push(grp);
+      }
+    }
+    // 竹（左下）
+    const bamMat = new THREE.MeshStandardMaterial({ color: 0x4a6b52, roughness: .9 });
+    for (let i = 0; i < 10; i++) {
+      const x = 46 + R01(i + 950) * 95, z = 205 + R01(i + 960) * 100;
+      const s = .8 + R01(i + 7) * .6;
+      const cane = new THREE.Mesh(new THREE.CylinderGeometry(.55 * s, .75 * s, 26 * s, 5), bamMat);
+      cane.position.y = 13 * s; cane.castShadow = true;
+      const grp = new THREE.Group(); grp.add(cane);
+      for (let f = 0; f < 3; f++) {
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(1.5 * s, 7 * s, 4), bamMat);
+        leaf.position.set((f - 1) * 2.4 * s, 26 * s + 2, 0);
+        leaf.rotation.z = (f - 1) * .5;
+        grp.add(leaf);
+      }
+      grp.position.set(x, elev(x, z) - .4, z);
+      grp.userData.ph = R01(i + 33) * TAU;
+      scene.add(grp); decoBamboo.push(grp);
+    }
+    // 石灯笼（沿山道）
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x7d7468, roughness: .9 });
+    const glowMat = new THREE.MeshStandardMaterial({ color: 0xf0c878, emissive: 0xdf9e3c, emissiveIntensity: 1 });
+    for (let d = 260; d < C.PLEN - 200; d += 430) {
+      const n = C.pathNormal(d), side = ((d / 430) | 0) % 2 ? 1 : -1;
+      const [x, y] = C.posAt(d);
+      const lx = x + n[0] * 33 * side, lz = y + n[1] * 33 * side;
+      const grp = new THREE.Group();
+      const post = new THREE.Mesh(new THREE.BoxGeometry(1.6, 7, 1.6), stoneMat); post.position.y = 3.5; post.castShadow = true; grp.add(post);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(3.4, 2.6, 4), stoneMat); cap.position.y = 9.2; cap.castShadow = true; grp.add(cap);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 6), glowMat.clone()); lamp.position.y = 7.2; grp.add(lamp);
+      grp.position.set(lx, elev(lx, lz), lz);
+      grp.userData.lamp = lamp; grp.userData.ph = d * .01;
+      scene.add(grp); decoLanterns.push(grp);
+    }
+  })();
+
+  // ---------- 粒子池（THREE.Points，CPU 更新） ----------
+  const PMAX = 1600;
+  const pGeo = new THREE.BufferGeometry();
+  const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 3), pSize = new Float32Array(PMAX);
+  pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+  pGeo.setAttribute("color", new THREE.BufferAttribute(pCol, 3));
+  pGeo.setAttribute("size", new THREE.BufferAttribute(pSize, 1));
+  const pMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: {},
+    vertexShader: `attribute float size; varying vec3 vColor;
+      void main(){ vColor=color; vec4 mv=modelViewMatrix*vec4(position,1.0);
+        gl_PointSize=size*(260.0/-mv.z); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader: `varying vec3 vColor;
+      void main(){ vec2 d=gl_PointCoord-vec2(.5); float r=length(d);
+        float a=smoothstep(.5,.08,r); gl_FragColor=vec4(vColor,a); }`,
+    vertexColors: true
   });
-  // 云雾带（缓移半透明）
-  for (let i = 0; i < 3; i++) {
-    const y = 70 + i * 60, x0 = ((t * (6 + i * 3)) % (W + 400)) - 200;
-    ctx.globalAlpha = .05 + i * .02; ctx.fillStyle = PAPER;
-    ctx.beginPath(); ctx.ellipse(x0, y, 180, 14, 0, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.ellipse((x0 + 320) % (W + 200) - 100, y + 18, 150, 11, 0, 0, TAU); ctx.fill();
+  const points = new THREE.Points(pGeo, pMat);
+  points.frustumCulled = false;
+  scene.add(points);
+  const pVel = new Float32Array(PMAX * 3), pLife = new Float32Array(PMAX), pDecay = new Float32Array(PMAX), pGrav = new Float32Array(PMAX), pSizeV = new Float32Array(PMAX);
+  let pHead = 0;
+  function emit(x, y, z, o) {
+    const i = pHead; pHead = (pHead + 1) % PMAX;
+    pPos[i * 3] = x; pPos[i * 3 + 1] = y; pPos[i * 3 + 2] = z;
+    pVel[i * 3] = o.vx || 0; pVel[i * 3 + 1] = o.vy || 0; pVel[i * 3 + 2] = o.vz || 0;
+    const c = new THREE.Color(o.col == null ? 0x2b2620 : o.col);
+    pCol[i * 3] = c.r; pCol[i * 3 + 1] = c.g; pCol[i * 3 + 2] = c.b;
+    pLife[i] = o.life || 1; pDecay[i] = o.decay || 1.6; pGrav[i] = o.grav || 0; pSizeV[i] = o.r || 2;
   }
-  ctx.restore();
-  // 雁阵
-  ctx.save(); ctx.fillStyle = "rgba(43,38,32,.55)";
-  for (const flock of geese) {
-    for (let i = 0; i < flock.n; i++) {
-      const gx = flock.x + i * 14, gy = flock.y + Math.sin(flock.ph + t * 2 + i) * 2 + i * 4;
-      const fl = Math.sin(t * 6 + i * 1.3) * 3;
-      ctx.beginPath(); ctx.moveTo(gx - 5, gy + fl); ctx.quadraticCurveTo(gx, gy - 2, gx + 5, gy + fl);
-      ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(43,38,32,.5)"; ctx.stroke();
+  function stepParticles(dt) {
+    for (let i = 0; i < PMAX; i++) {
+      if (pLife[i] <= 0) { pSize[i] = 0; continue; }
+      pLife[i] -= dt * pDecay[i];
+      pVel[i * 3 + 1] -= pGrav[i] * dt;
+      pPos[i * 3] += pVel[i * 3] * dt;
+      pPos[i * 3 + 1] += pVel[i * 3 + 1] * dt;
+      pPos[i * 3 + 2] += pVel[i * 3 + 2] * dt;
+      pSize[i] = Math.max(0, pSizeV[i] * Math.min(1, pLife[i]) * 3.4);
     }
+    pGeo.attributes.position.needsUpdate = true;
+    pGeo.attributes.color.needsUpdate = true;
+    pGeo.attributes.size.needsUpdate = true;
   }
-  ctx.restore();
-  // 苔点/枯草（山道两侧）
-  ctx.save();
-  for (const gr of decor.grass) {
-    ctx.globalAlpha = .35;
-    ctx.strokeStyle = INK; ctx.lineWidth = 1;
-    for (let b = 0; b < 3; b++) {
-      const bx = gr.x + (b - 1) * 2.4;
-      ctx.beginPath(); ctx.moveTo(bx, gr.y);
-      ctx.quadraticCurveTo(bx + gr.lean * 4, gr.y - gr.s * .6, bx + gr.lean * 7, gr.y - gr.s);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = .25;
-    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(gr.x + 3, gr.y + 1, 1.2, 0, TAU); ctx.fill();
-  }
-  ctx.restore();
-  // 散石
-  ctx.save();
-  for (const rk of decor.rocks) {
-    ctx.globalAlpha = .3; ctx.fillStyle = INK;
-    ctx.beginPath(); ctx.ellipse(rk.x, rk.y, rk.s, rk.s * .65, rk.i, 0, TAU); ctx.fill();
-    ctx.globalAlpha = .15;
-    ctx.beginPath(); ctx.ellipse(rk.x + rk.s * .3, rk.y + rk.s * .2, rk.s * .5, rk.s * .3, rk.i, 0, TAU); ctx.fill();
-  }
-  ctx.restore();
-  drawPath(t);
-  drawStream(t);
-  drawPines(t);
-  drawBamboo(t);
-  drawLanterns(t);
-  drawGate(t);
-  drawSpawnVortex(t);
-}
-// 溪流（右缘蜿蜒淡青线 + 波光）
-function drawStream(t) {
-  ctx.save();
-  // 三条平行主线
-  for (let k = 0; k < 3; k++) {
-    ctx.beginPath(); ctx.moveTo(870 + k * 9, 30);
-    ctx.bezierCurveTo(900 + k * 10, 160, 830 + k * 8, 300, 905 + k * 9, 420);
-    ctx.bezierCurveTo(930 + k * 8, 480, 900 + k * 8, 540, 940 + k * 7, 600);
-    ctx.strokeStyle = `rgba(61,107,107,${.14 + k * .05})`; ctx.lineWidth = 2.4 - k * .6; ctx.lineCap = "round";
-    ctx.stroke();
-  }
-  // 波光短线（沿曲线闪烁）
+
+  // ---------- 闪电池 ----------
+  const bolts = [];
   for (let i = 0; i < 10; i++) {
-    const tt2 = (i / 10 + (t * .05)) % 1;
-    const y = 40 + tt2 * 520;
-    const x = 870 + Math.sin(y * .012) * 26 + i % 3 * 8;
-    ctx.globalAlpha = .25 + Math.sin(t * 2.4 + i * 1.7) * .18;
-    ctx.strokeStyle = "rgba(120,170,165,.8)"; ctx.lineWidth = 1.1;
-    ctx.beginPath(); ctx.moveTo(x - 5, y); ctx.quadraticCurveTo(x, y - 2.4, x + 5, y); ctx.stroke();
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9 * 3), 3));
+    const bm = new THREE.LineBasicMaterial({ color: 0xd8b45a, transparent: true, opacity: 0, fog: false });
+    const line = new THREE.Line(bg, bm);
+    line.frustumCulled = false;
+    scene.add(line);
+    bolts.push({ line, life: 0, decay: 7 });
   }
-  ctx.restore();
-}
-// 竹丛（左下，随风摆）
-function drawBamboo(t) {
-  ctx.save();
-  for (const b of decor.bamboo) {
-    const sway = Math.sin(t * 1.1 + b.ph) * 3.2;
-    ctx.strokeStyle = "rgba(61,107,107,.55)"; ctx.lineWidth = 2.2; ctx.lineCap = "round";
-    // 竿（两节）
-    ctx.beginPath(); ctx.moveTo(b.x, b.y);
-    ctx.quadraticCurveTo(b.x + b.lean * 20 + sway * .4, b.y - b.h * .55, b.x + b.lean * 34 + sway, b.y - b.h);
-    ctx.stroke();
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(b.x + b.lean * 34 + sway, b.y - b.h);
-    ctx.quadraticCurveTo(b.x + b.lean * 44 + sway * 1.4, b.y - b.h * 1.25, b.x + b.lean * 50 + sway * 1.8, b.y - b.h * 1.45);
-    ctx.stroke();
-    // 竹节
-    ctx.lineWidth = 1;
-    for (let s = .3; s < 1; s += .3) {
-      const jx = b.x + b.lean * 34 * s + sway * s, jy = b.y - b.h * s;
-      ctx.beginPath(); ctx.moveTo(jx - 2.4, jy); ctx.lineTo(jx + 2.4, jy - 1); ctx.stroke();
+  function boltFX(x0, y0, z0, x1, y1, z1) {
+    const b = bolts.find(b2 => b2.life <= 0) || bolts[0];
+    const arr = b.line.geometry.attributes.position.array;
+    const segs = 8;
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const j = (i === 0 || i === segs) ? 0 : 1;
+      arr[i * 3] = x0 + (x1 - x0) * t + (j ? (Math.random() - .5) * 18 : 0);
+      arr[i * 3 + 1] = y0 + (y1 - y0) * t + (j ? (Math.random() - .5) * 10 : 0);
+      arr[i * 3 + 2] = z0 + (z1 - z0) * t + (j ? (Math.random() - .5) * 18 : 0);
     }
-    // 顶部叶簇（三撇）
-    ctx.strokeStyle = "rgba(90,107,61,.6)"; ctx.lineWidth = 1.3;
-    const lx = b.x + b.lean * 50 + sway * 1.8, ly = b.y - b.h * 1.45;
-    for (let f = 0; f < 3; f++) {
-      const fa = -2.4 + f * .8 + Math.sin(t * 1.3 + b.ph) * .08;
-      ctx.beginPath(); ctx.moveTo(lx, ly);
-      ctx.quadraticCurveTo(lx + Math.cos(fa) * 9, ly + Math.sin(fa) * 9 - 3, lx + Math.cos(fa) * 15, ly + Math.sin(fa) * 15);
-      ctx.stroke();
+    b.line.geometry.attributes.position.needsUpdate = true;
+    b.life = 1; b.decay = 7;
+  }
+  function stepBolts(dt) {
+    for (const b of bolts) {
+      if (b.life > 0) { b.life -= dt * b.decay; b.line.material.opacity = Math.max(0, b.life) * .95; }
     }
   }
-  ctx.restore();
-}
-// 石灯笼（沿山道，暖光呼吸）
-function drawLanterns(t) {
-  ctx.save();
-  for (const L of decor.lanterns) {
-    ctx.globalAlpha = .55;
-    ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.lineCap = "round";
-    // 柱 + 顶
-    ctx.beginPath(); ctx.moveTo(L.x, L.y); ctx.lineTo(L.x, L.y - 14); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(L.x - 5, L.y - 14); ctx.lineTo(L.x + 5, L.y - 14); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(L.x - 3.4, L.y - 14); ctx.lineTo(L.x - 3.4, L.y - 20); ctx.moveTo(L.x + 3.4, L.y - 14); ctx.lineTo(L.x + 3.4, L.y - 20); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(L.x - 6, L.y - 20); ctx.quadraticCurveTo(L.x, L.y - 26, L.x + 6, L.y - 20); ctx.stroke();
-    // 暖光（呼吸）
-    const glow = .5 + Math.sin(t * 2.2 + L.ph) * .25;
-    const gr = ctx.createRadialGradient(L.x, L.y - 17, 0, L.x, L.y - 17, 11);
-    gr.addColorStop(0, `rgba(224,170,86,${.5 * glow + .2})`); gr.addColorStop(1, "rgba(224,170,86,0)");
-    ctx.globalAlpha = 1; ctx.fillStyle = gr;
-    ctx.beginPath(); ctx.arc(L.x, L.y - 17, 11, 0, TAU); ctx.fill();
-    ctx.fillStyle = `rgba(240,200,120,${.65 + glow * .25})`;
-    ctx.beginPath(); ctx.arc(L.x, L.y - 17, 2, 0, TAU); ctx.fill();
+
+  // ---------- 妖兽 3D 工厂 ----------
+  const matInkBase = new THREE.MeshStandardMaterial({ color: INK, roughness: .85 });
+  const matEye = () => new THREE.MeshStandardMaterial({ color: 0xff2a1a, emissive: 0xc01808, emissiveIntensity: 1.6, roughness: .4 });
+  function makeFoe(type) {
+    const grp = new THREE.Group();
+    const mats = [];
+    const M = geo => { const m = new THREE.Mesh(geo, matInkBase.clone()); m.castShadow = true; grp.add(m); mats.push(m); return m; };
+    const F = C.FOES[type]; const r = F.r * .9;
+    switch (type) {
+      case "grunt": {
+        const body = M(new THREE.SphereGeometry(r, 12, 10)); body.scale.set(1.25, .9, .95); body.position.y = r * .8;
+        const head = M(new THREE.SphereGeometry(r * .55, 10, 8)); head.position.set(-r * 1.1, r * 1.15, 0);
+        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .22, r * .6, 5)); ear.position.set(-r * 1.15, r * 1.7, s * r * .3); ear.rotation.z = -.4; }
+        const tail = M(new THREE.ConeGeometry(r * .3, r * 1.5, 6)); tail.position.set(r * 1.4, r * 1.1, 0); tail.rotation.z = Math.PI / 2.4;
+        break;
+      }
+      case "fox": {
+        const body = M(new THREE.SphereGeometry(r, 12, 10)); body.scale.set(1.9, .75, .7); body.position.y = r * .7;
+        const head = M(new THREE.ConeGeometry(r * .5, r * 1.1, 8)); head.position.set(-r * 1.7, r * .95, 0); head.rotation.z = Math.PI / 2;
+        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .22, r * .8, 4)); ear.position.set(-r * 1.5, r * 1.6, s * r * .25); }
+        const tail = M(new THREE.ConeGeometry(r * .42, r * 1.9, 7)); tail.position.set(r * 2.0, r * .9, 0); tail.rotation.z = -Math.PI / 2.2;
+        break;
+      }
+      case "scale": {
+        const body = M(new THREE.SphereGeometry(r, 14, 10)); body.scale.set(1.15, .95, 1.5); body.position.y = r * .85;
+        const armor = new THREE.Mesh(new THREE.SphereGeometry(r * .95, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+          new THREE.MeshStandardMaterial({ color: 0x55606a, roughness: .55, metalness: .5 }));
+        armor.position.y = r * .85; armor.castShadow = true; grp.add(armor); mats.push(armor);
+        const head = M(new THREE.SphereGeometry(r * .45, 8, 6)); head.position.set(0, r * .95, -r * 1.45);
+        break;
+      }
+      case "boat": {
+        const hull = M(new THREE.SphereGeometry(r, 12, 8)); hull.scale.set(2.1, .55, .8); hull.position.y = r * 1.1;
+        const mast = M(new THREE.CylinderGeometry(.7, .7, r * 2.6, 5)); mast.position.y = r * 2.1;
+        const sail = new THREE.Mesh(new THREE.PlaneGeometry(r * 1.9, r * 1.6),
+          new THREE.MeshStandardMaterial({ color: 0x6b5a7a, roughness: .9, side: THREE.DoubleSide }));
+        sail.position.set(0, r * 2.3, r * .5); sail.rotation.y = .35; grp.add(sail); mats.push(sail);
+        const cloud = new THREE.Mesh(new THREE.SphereGeometry(r * 1.2, 10, 8),
+          new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 1, transparent: true, opacity: .85 }));
+        cloud.scale.y = .35; cloud.position.y = r * .3; grp.add(cloud);
+        break;
+      }
+      case "wolf": {
+        const body = M(new THREE.SphereGeometry(r, 12, 9)); body.scale.set(1.7, .68, .62); body.position.y = r * .62;
+        const head = M(new THREE.SphereGeometry(r * .42, 8, 7)); head.position.set(-r * 1.55, r * .9, 0);
+        for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(r * .18, r * .55, 4)); ear.position.set(-r * 1.5, r * 1.35, s * r * .2); }
+        const tail = M(new THREE.ConeGeometry(r * .26, r * 1.3, 6)); tail.position.set(r * 1.75, r * .8, 0); tail.rotation.z = -Math.PI / 1.9;
+        break;
+      }
+      case "treant": {
+        const trunk = M(new THREE.CylinderGeometry(r * .42, r * .62, r * 2.2, 7)); trunk.position.y = r * 1.1;
+        for (const s of [-1, 1]) {
+          const arm = M(new THREE.CylinderGeometry(r * .16, r * .22, r * 1.5, 5));
+          arm.position.set(s * r * 1.0, r * 1.7, 0); arm.rotation.z = s * -.8;
+        }
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x5a6b3d, roughness: .95 });
+        for (const [lx, ly, lz, lr] of [[0, r * 2.6, 0, r * .95], [-r * 1.15, r * 2.0, 0, r * .55], [r * 1.15, r * 2.0, 0, r * .55]]) {
+          const leaf = new THREE.Mesh(new THREE.SphereGeometry(lr, 9, 7), leafMat);
+          leaf.position.set(lx, ly, lz); leaf.castShadow = true; grp.add(leaf); mats.push(leaf);
+        }
+        break;
+      }
+      case "boss": {
+        const body = M(new THREE.SphereGeometry(r, 16, 12)); body.scale.set(1.3, 1, 1.05); body.position.y = r * .95;
+        const head = M(new THREE.SphereGeometry(r * .55, 10, 8)); head.position.set(-r * 1.15, r * 1.5, 0);
+        for (const s of [-1, 1]) {
+          const horn = M(new THREE.ConeGeometry(r * .18, r * 1.3, 6));
+          horn.position.set(-r * (s > 0 ? 1.35 : .95), r * 2.2, s * r * .3);
+          horn.rotation.z = s * .45;
+        }
+        for (let i = 0; i < 5; i++) {
+          const mane = M(new THREE.ConeGeometry(r * .16, r * .7, 4));
+          mane.position.set(-r * .3 + i * r * .34, r * 1.95, 0);
+        }
+        break;
+      }
+    }
+    // 朱砂点睛
+    const eyes = type === "boss" ? [[-r * 1.25, r * 1.55, r * .2], [-r * 1.25, r * 1.55, -r * .2]]
+      : type === "boat" ? [] : (type === "scale" ? [[0, r * 1.0, -r * 1.7]] : [[-r * 1.15, r * 1.2, 0]]);
+    for (const [ex, ey, ez] of eyes) {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(type === "boss" ? 2.2 : 1.5, 6, 5), matEye());
+      e.position.set(ex, ey, ez);
+      grp.add(e);
+    }
+    grp.userData.mats = mats;
+    grp.userData.eyes = grp.children.filter(c2 => c2.material && c2.material.emissive && c2.material.emissive.getHex() === 0xc01808);
+    return grp;
   }
-  ctx.restore();
-}
-// 山道：多层笔触 + 石阶 + 飞白
-function drawPath(t) {
-  const pathThrough = () => {
-    ctx.beginPath(); ctx.moveTo(C.PATH[0][0], C.PATH[0][1]);
-    for (let i = 1; i < C.PATH.length; i++) ctx.lineTo(C.PATH[i][0], C.PATH[i][1]);
+
+  // ---------- 阵法 3D 工厂 ----------
+  const ELE_HEX = { metal: RED, fire: 0xc45a28, ice: CYAN, thunder: GOLD, wind: GREEN, qi: GOLD, blend: PURPLE };
+  function makeTower(t) {
+    const grp = new THREE.Group();
+    const st = C.stats(t) || {};
+    const isF = t.kind === "fusion";
+    const R = isF ? 20 : 15;
+    const hex = ELE_HEX[st.ele || "blend"] || PURPLE;
+    // 石台
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(R + 2, R + 4, 5, isF ? 10 : 8),
+      new THREE.MeshStandardMaterial({ color: 0x7d7468, roughness: .92 }));
+    base.position.y = 2.5; base.castShadow = true; base.receiveShadow = true; grp.add(base);
+    // 符盘
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 2.4, isF ? 12 : 10),
+      new THREE.MeshStandardMaterial({ color: 0xe8e0ce, roughness: .85 }));
+    disc.position.y = 6.2; disc.receiveShadow = true; grp.add(disc);
+    // 属性环（发光）
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(R - 4, .8, 8, isF ? 32 : 24),
+      new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: .55, roughness: .5 }));
+    ring.rotation.x = Math.PI / 2; ring.position.y = 7.6; grp.add(ring);
+    // 内环（反向）
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(R - 8, .5, 6, 20),
+      new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: .3, roughness: .6 }));
+    ring2.rotation.x = Math.PI / 2; ring2.position.y = 7.6; grp.add(ring2);
+    // 太极芯
+    const core = new THREE.Mesh(new THREE.SphereGeometry(3.4, 10, 8),
+      new THREE.MeshStandardMaterial({ color: INK, roughness: .6 }));
+    core.position.y = 8.6; grp.add(core);
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(1.2, 6, 5),
+      new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: .8 }));
+    dot.position.set(1.1, 9.6, -1.1); grp.add(dot);
+    grp.userData = { ring, ring2, core, orbiters: [], realmBalls: [], ele: hex };
+    return grp;
+  }
+  // 三级环绕飞剑（一次性挂载）
+  function mountOrbiters(t, mesh) {
+    if (mesh.userData.orbiters.length) return;
+    const st = C.stats(t) || {};
+    const hex = mesh.userData.ele;
+    const swordGeo = new THREE.BoxGeometry(4.6, .5, 1);
+    const n = 3, orbit = (t.kind === "fusion" ? 20 : 15) + 6;
+    for (let i = 0; i < n; i++) {
+      const sw = new THREE.Mesh(swordGeo, new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: .5, roughness: .4 }));
+      mesh.add(sw);
+      mesh.userData.orbiters.push({ mesh: sw, orbit, phase: i * Math.PI * 2 / n, speed: 2.2, y: 8.6 });
+    }
+  }
+  function mountRealmBalls(t, mesh) {
+    const want = (t.realm || 0) >= 2 ? (t.realm >= 3 ? 4 : 2) : 0;
+    while (mesh.userData.realmBalls.length < want) {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6),
+        new THREE.MeshStandardMaterial({ color: 0xd6ae5a, emissive: 0xb8862c, emissiveIntensity: 1.2 }));
+      mesh.add(b);
+      mesh.userData.realmBalls.push({ mesh: b, phase: -mesh.userData.realmBalls.length * Math.PI / 2, orbit: (t.kind === "fusion" ? 20 : 15) + 2, y: 8 });
+    }
+  }
+
+  // ---------- 布阵 ghost ----------
+  const ghost = new THREE.Group();
+  const ghostDisc = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 2, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .3, depthWrite: false }));
+  ghostDisc.position.y = 1.2; ghost.add(ghostDisc);
+  const ghostRing = new THREE.Mesh(new THREE.RingGeometry(128, 132, 48),
+    new THREE.MeshBasicMaterial({ color: 0x9e2b25, transparent: true, opacity: .4, side: THREE.DoubleSide, depthWrite: false }));
+  ghostRing.rotation.x = -Math.PI / 2; ghostRing.position.y = .4; ghost.add(ghostRing);
+  ghost.visible = false;
+  scene.add(ghost);
+
+  // ---------- 妖兽/弹道 实体同步表 ----------
+  const foeMeshes = new Map();   // id → {grp, mats, hitT}
+  const projMeshes = new Map();  // id → mesh
+  const swordGeo3 = new THREE.BoxGeometry(9, .7, .7);
+  const fireGeo3 = new THREE.SphereGeometry(3.2, 8, 6);
+  const iceGeo3 = new THREE.IcosahedronGeometry(2.4, 0);
+  function projMesh(kind) {
+    let m;
+    if (kind === "fire") m = new THREE.Mesh(fireGeo3, new THREE.MeshStandardMaterial({ color: 0xc45a28, emissive: 0x9c3d12, emissiveIntensity: 1.4 }));
+    else if (kind === "bolt") m = new THREE.Mesh(iceGeo3, new THREE.MeshStandardMaterial({ color: 0x3d6b6b, emissive: 0x2c5252, emissiveIntensity: 1 }));
+    else if (kind === "lock") m = new THREE.Mesh(new THREE.TorusGeometry(2.4, .8, 6, 10), new THREE.MeshStandardMaterial({ color: 0x5a6b3d, emissive: 0x465432, emissiveIntensity: 1 }));
+    else m = new THREE.Mesh(swordGeo3, new THREE.MeshStandardMaterial({ color: 0xe86a5a, emissive: 0x9e2b25, emissiveIntensity: 1.2 }));
+    return m;
+  }
+
+  // ---------- 世界→屏幕（DOM 飘字） ----------
+  const v3 = new THREE.Vector3();
+  function toScreen(x, y, z) {
+    v3.set(x, y, z).project(camera);
+    return [(v3.x * .5 + .5) * 960, (-v3.y * .5 + .5) * 600];
+  }
+
+  // ---------- 拾取（屏幕 → 地面 2D 坐标） ----------
+  const raycaster = new THREE.Raycaster();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  function pickGround(px, py) {
+    const nx = (px / 960) * 2 - 1, ny = -(py / 600) * 2 + 1;
+    raycaster.setFromCamera({ x: nx, y: ny }, camera);
+    const hit = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane, hit);
+    if (!hit) return null;
+    return [hit.x, hit.z];
+  }
+
+  // ---------- 每帧同步 ----------
+  function sync(dt, time) {
+    // 妖兽
+    const seen = new Set();
+    for (const e of g.enemies) {
+      seen.add(e.id);
+      let rec = foeMeshes.get(e.id);
+      if (!rec) {
+        const grp = makeFoe(e.type);
+        scene.add(grp);
+        rec = { grp, hitT: 0 };
+        foeMeshes.set(e.id, rec);
+      }
+      const [x, z] = C.foePos(g, e);
+      const hGround = 0;
+      rec.grp.position.set(x, hGround, z);
+      // 朝向：沿路径切线（飞行单位沿航线）
+      let dx, dz;
+      if (e.fly) { dx = C.GATE[0] - C.SPAWN[0]; dz = C.GATE[1] - C.SPAWN[1]; }
+      else {
+        const ahead = C.posAt(Math.min(C.PLEN, e.d + 2));
+        dx = ahead[0] - x; dz = ahead[1] - z;
+      }
+      rec.grp.rotation.y = Math.atan2(dx, dz) + Math.PI; // 模型头朝 -x
+      // 起伏动画（飞行更高 + 波动）
+      const bob = Math.sin(time * 8 + e.wob) * 1.4;
+      rec.grp.position.y = (e.fly ? 26 : 0) + (e.fly ? Math.sin(time * 2.4 + e.wob) * 3 : bob * .2);
+      // 受击白闪
+      if (e.hitT > 0) {
+        rec.hitT = e.hitT;
+      }
+      if (rec.hitT > 0) {
+        rec.hitT -= dt;
+        const k = Math.max(0, rec.hitT) * 4;
+        for (const m of rec.grp.userData.mats) { m.material.emissive.setRGB(k, k, k * .9); }
+      } else {
+        for (const m of rec.grp.userData.mats) { if (m.material.emissive.r > 0 && m.material.emissive.getHex() !== 0xc01808) m.material.emissive.setRGB(0, 0, 0); }
+      }
+      // 燃烧火点
+      if (e.burnT > 0 && Math.random() < .4) {
+        emit(x + (Math.random() - .5) * 12, (e.fly ? 26 : 10) + Math.random() * 8, z + (Math.random() - .5) * 12,
+          { vy: 22 + Math.random() * 16, r: 2.2, col: 0xc45a28, decay: 2, grav: -10 });
+      }
+      // 减速霜气
+      if (e.slowT > 0 && Math.random() < .25) {
+        emit(x + (Math.random() - .5) * 14, (e.fly ? 26 : 4) + Math.random() * 6, z + (Math.random() - .5) * 14,
+          { vy: 6, r: 1.8, col: 0x78aac5, decay: 1.2 });
+      }
+      // BOSS 妖气
+      if (e.type === "boss" && Math.random() < .5) {
+        emit(x + (Math.random() - .5) * 34, 6 + Math.random() * 20, z + (Math.random() - .5) * 30,
+          { vy: 10, r: 3, col: 0x5d3d6b, decay: .9, life: 1.4 });
+      }
+    }
+    for (const [id, rec] of foeMeshes) {
+      if (!seen.has(id)) { scene.remove(rec.grp); foeMeshes.delete(id); }
+    }
+    // 阵法
+    for (const t of g.towers) {
+      let rec = towerMeshes.get(t.id);
+      if (!rec) {
+        const grp = makeTower(t);
+        grp.position.set(t.x, elev(t.x, t.y), t.y);
+        scene.add(grp);
+        rec = { grp };
+        towerMeshes.set(t.id, rec);
+      }
+      const grp = rec.grp;
+      grp.position.x = t.x; grp.position.z = t.y;
+      grp.position.y = elev(t.x, t.y);
+      grp.userData.ring.rotation.z = t.spin * .8;
+      grp.userData.ring2.rotation.z = -t.spin * 1.3;
+      grp.userData.core.rotation.y = t.spin;
+      if (t.lvl === 3) mountOrbiters(t, grp);
+      for (const o of grp.userData.orbiters) {
+        const a = time * o.speed + o.phase;
+        o.mesh.position.set(Math.cos(a) * o.orbit, o.y + Math.sin(time * 3 + o.phase) * 1.2, Math.sin(a) * o.orbit);
+        o.mesh.rotation.y = -a + Math.PI / 2;
+        o.mesh.rotation.z = Math.sin(time * 3 + o.phase) * .2;
+      }
+      mountRealmBalls(t, grp);
+      for (const b of grp.userData.realmBalls) {
+        const a = -time * 1.5 + b.phase;
+        b.mesh.position.set(Math.cos(a) * b.orbit, b.y + Math.sin(time * 2.5 + b.phase) * 1.5, Math.sin(a) * b.orbit);
+      }
+      // 聚灵吸气粒子
+      const st = C.stats(t);
+      if ((st && (st.qiRate || st.qiPerSec)) && Math.random() < .3) {
+        const a = Math.random() * Math.PI * 2, d = 26 + Math.random() * 22;
+        emit(t.x + Math.cos(a) * d, 12 + Math.random() * 10, t.y + Math.sin(a) * d,
+          { vx: -Math.cos(a) * 22, vy: -6, vz: -Math.sin(a) * 22, r: 1.6, col: 0xd6ae5a, decay: 1.3 });
+      }
+    }
+    for (const [id, rec] of towerMeshes) {
+      if (!g.towers.find(t2 => t2.id === id)) { scene.remove(rec.grp); towerMeshes.delete(id); }
+    }
+    // 弹道
+    const seenP = new Set();
+    for (const p of g.projectiles) {
+      seenP.add(p.id);
+      let m = projMeshes.get(p.id);
+      if (!m) { m = projMesh(p.kind); scene.add(m); projMeshes.set(p.id, m); }
+      m.position.set(p.x, 12, p.y); // p.x/p.y 是 2D，y→3D z
+      const dx = p.tx - p.x, dz = p.ty - p.y;
+      const L = Math.hypot(dx, dz) || 1;
+      m.rotation.y = Math.atan2(dx, dz);
+      // 尾焰
+      if (p.kind === "fire" && Math.random() < .8) emit(p.x, 12, p.y, { vy: 8, r: 1.8, col: 0xc45a28, decay: 3 });
+      if ((p.kind === "sword" || p.kind === "frostSword" || p.kind === "thunderSword" || p.kind === "fireSword") && Math.random() < .5) {
+        emit(p.x, 12, p.y, { r: 1.2, col: p.kind === "frostSword" ? 0x78aac5 : 0xd88, decay: 4, life: .5 });
+      }
+    }
+    for (const [id, m] of projMeshes) {
+      if (!seenP.has(id)) { scene.remove(m); projMeshes.delete(id); }
+    }
+    // 装饰动画
+    for (const p of decoPines) p.rotation.z = Math.sin(time * .8 + p.userData.ph) * .012;
+    for (const b of decoBamboo) b.rotation.z = Math.sin(time * 1.2 + b.userData.ph) * .035;
+    for (const L of decoLanterns) {
+      const k = .5 + Math.sin(time * 2.2 + L.userData.ph) * .5;
+      L.userData.lamp.material.emissiveIntensity = .7 + k * .8;
+    }
+    for (const d of streamGlints) d.material.opacity = .3 + Math.abs(Math.sin(time * 2 + d.userData.ph)) * .5;
+  }
+  const towerMeshes = new Map();
+
+  // ---------- 相机 ----------
+  function render(dt, time) {
+    if (shake > 0) {
+      camera.position.set(
+        camBase.x + (Math.random() - .5) * shake,
+        camBase.y + (Math.random() - .5) * shake,
+        camBase.z + (Math.random() - .5) * shake);
+      shake = Math.max(0, shake - dt * 16);
+    } else camera.position.copy(camBase);
+    camera.lookAt(480, 0, 300);
+    stepParticles(dt);
+    stepBolts(dt);
+    renderer.render(scene, camera);
+  }
+
+  return {
+    scene, camera, renderer, emit, boltFX, sync, render, toScreen, pickGround,
+    ghost, ghostRing, ghostDisc,
+    set shake(v) { shake = v; }, get shake() { return shake; },
   };
-  // 暖底色
-  ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
-  const layers = [
-    [46, "rgba(160,140,105,.10)"], [36, "rgba(90,80,60,.08)"],
-    [26, "rgba(43,38,32,.10)"], [16, "rgba(43,38,32,.32)"], [7, "rgba(30,26,22,.55)"]
-  ];
-  for (const [w, col] of layers) { pathThrough(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); }
-  // 飞白边缘（双排错位枯笔）
-  ctx.setLineDash([2, 15]); ctx.lineWidth = 1.4; ctx.strokeStyle = "rgba(43,38,32,.3)";
-  pathThrough(); ctx.stroke();
-  ctx.lineDashOffset = 8; ctx.stroke();
-  ctx.setLineDash([]);
-  // 石阶点（等距墨点，明暗错落）
-  for (let d = 30; d < C.PLEN - 20; d += 34) {
-    const [x, y] = C.posAt(d), n = C.pathNormal(d);
-    const side = (Math.floor(d / 34) % 2) ? 6 : -6;
-    ctx.fillStyle = `rgba(43,38,32,${.18 + (d / C.PLEN) * .1})`;
-    ctx.beginPath(); ctx.ellipse(x + n[0] * side, y + n[1] * side, 3.4, 2.1, Math.atan2(n[1], n[0]), 0, TAU); ctx.fill();
-  }
-  ctx.restore();
+})();
+
+/* ---------------- 3D 特效调度（事件 → 粒子/闪电/飘字） ---------------- */
+const wrap = document.getElementById("wrap");
+function floatText3D(x, z, text, col, size, yOff) {
+  const [sx, sy] = R3D.toScreen(x, (yOff || 14), z);
+  const el = document.createElement("div");
+  el.className = "ft";
+  el.textContent = text;
+  el.style.cssText = `position:absolute;left:${sx}px;top:${sy}px;color:${col || "#a8842c"};font-size:${size || 13}px;letter-spacing:1px;pointer-events:none;z-index:12;text-shadow:0 0 3px rgba(232,224,206,.9);transform:translate(-50%,-100%);white-space:nowrap`;
+  wrap.appendChild(el);
+  floaters.push({ el, life: 1 });
 }
-// 松树剪影（弯角处）
-function drawPines(t) {
-  ctx.save();
-  for (const p of decor.pines) {
-    const sway = Math.sin(t * .7 + p.i) * 1.5;
-    ctx.strokeStyle = "rgba(43,38,32,.5)"; ctx.lineWidth = 2.4 * p.s; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(p.x, p.y);
-    ctx.quadraticCurveTo(p.x + 4 * p.s + sway, p.y - 16 * p.s, p.x + 2 * p.s + sway, p.y - 30 * p.s);
-    ctx.stroke();
-    // 针叶团（三叠）
-    ctx.fillStyle = "rgba(43,38,32,.42)";
-    for (let k = 0; k < 3; k++) {
-      const ly = p.y - 14 * p.s - k * 9 * p.s, lw = (16 - k * 4) * p.s;
-      ctx.beginPath();
-      ctx.moveTo(p.x + 2 * p.s - lw, ly);
-      ctx.quadraticCurveTo(p.x + 2 * p.s, ly - 10 * p.s, p.x + 2 * p.s + lw, ly);
-      ctx.quadraticCurveTo(p.x + 2 * p.s, ly + 3 * p.s, p.x + 2 * p.s - lw, ly);
-      ctx.fill();
-    }
+let floaters = [];
+function stepFloaters(dt) {
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i];
+    f.life -= dt * .8;
+    f.el.style.top = (parseFloat(f.el.style.top) - dt * 28) + "px";
+    f.el.style.opacity = Math.min(1, f.life * 1.5);
+    if (f.life <= 0) { f.el.remove(); floaters.splice(i, 1); }
   }
-  ctx.restore();
 }
-// 山门牌坊（终点）
-function drawGate(t) {
-  const [gx, gy] = C.GATE;
-  ctx.save(); ctx.translate(gx, gy);
-  const hurt = (g.lives <= 3);
-  const pulse = hurt ? (Math.sin(t * 6) * .5 + .5) : 0;
-  // 牌坊柱
-  ctx.fillStyle = hurt ? `rgba(158,43,37,${.75 + pulse * .25})` : "rgba(158,43,37,.85)";
-  ctx.fillRect(-26, -46, 6, 50); ctx.fillRect(20, -46, 6, 50);
-  // 匾额
-  ctx.fillRect(-26, -52, 52, 14);
-  ctx.fillStyle = PAPER; ctx.font = "bold 11px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("星宗山门", 0, -44.5);
-  // 灯笼（摆动）
-  for (const sx of [-30, 30]) {
-    ctx.save(); ctx.translate(sx, -34);
-    ctx.rotate(Math.sin(t * 2.2 + sx) * .18);
-    ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 7); ctx.stroke();
-    ctx.fillStyle = RED; ctx.beginPath(); ctx.ellipse(0, 13, 4.4, 6, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = "rgba(255,240,200,.9)"; ctx.beginPath(); ctx.arc(0, 13, 1.6, 0, TAU); ctx.fill();
-    ctx.restore();
+function burstKill3D(x, z, big) {
+  const n = big ? 46 : 16;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = (big ? 150 : 80) * (.3 + Math.random());
+    R3D.emit(x, 8 + Math.random() * 8, z,
+      { vx: Math.cos(a) * sp, vy: Math.sin(Math.random() * Math.PI) * sp * .8 + 20, vz: Math.sin(a) * sp, r: big ? 3.2 : 2, col: 0x514840, decay: 1.3, grav: 140, life: .9 });
   }
-  // 地面朱印
-  ctx.fillStyle = "rgba(158,43,37,.8)"; ctx.fillRect(-11, -11, 22, 22);
-  ctx.fillStyle = PAPER; ctx.font = "13px serif"; ctx.fillText("宗", 0, 1);
-  ctx.restore();
+  R3D.emit(x, 10, z, { r: big ? 16 : 8, col: 0x6a5f52, decay: 1.8, life: 1 });
+  if (big) shake = Math.max(shake, 9);
 }
-// 妖气漩涡（起点）
-function drawSpawnVortex(t) {
-  const [sx, sy] = C.SPAWN;
-  ctx.save(); ctx.translate(sx + 20, sy);
+function burstHit3D(x, z, ele) {
+  const cols = { metal: 0x9e2b25, fire: 0xc45a28, ice: 0x3d6b6b, thunder: 0xa8842c, wind: 0x5a6b3d, qi: 0xa8842c };
   for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    const ro = t * (0.8 + i * .3);
-    for (let a = 0; a < 7; a += .3) {
-      const rr = 3 + a * 3.2, an = ro - a + i * 1.6;
-      const px = Math.cos(an) * rr, py = Math.sin(an) * rr * .55;
-      a === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    }
-    ctx.strokeStyle = `rgba(93,61,107,${.4 - i * .07})`; ctx.lineWidth = 2.2 - i * .4; ctx.stroke();
-  }
-  // 紫雾
-  for (let i = 0; i < 3; i++) {
-    ctx.globalAlpha = .12 + Math.sin(t * 2 + i * 2) * .05;
-    ctx.fillStyle = PURPLE;
-    ctx.beginPath(); ctx.arc(10 + i * 8, Math.sin(t + i) * 5, 14 - i * 3, 0, TAU); ctx.fill();
-  }
-  ctx.restore();
-}
-
-/* ---------------- 妖兽绘制（7 种剪影 + 状态特效） ---------------- */
-function drawFoe(e, t) {
-  const [x, y] = C.foePos(g, e);
-  const wob = Math.sin(t * 9 + e.wob);
-  ctx.save(); ctx.translate(x, y);
-  const fly = e.fly;
-  if (fly) { // 飞舟投影
-    ctx.save(); ctx.globalAlpha = .18; ctx.fillStyle = INK;
-    ctx.beginPath(); ctx.ellipse(6, 26, 12, 4, 0, 0, TAU); ctx.fill(); ctx.restore();
-    ctx.translate(0, Math.sin(t * 2.4 + e.wob) * 2.6 - 10);
-  } else { // 走兽投影（随步伐起伏缩放）
-    ctx.save(); ctx.globalAlpha = .14; ctx.fillStyle = INK;
-    ctx.beginPath(); ctx.ellipse(1.5, e.r * .78 + 1.5, e.r * (.85 + wob * .06), e.r * .3, 0, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
-  // BOSS 脚步震波
-  if (e.type === "boss" && Math.random() < .1) {
-    P(x + (Math.random() - .5) * 14, y + e.r * .7, { type: "ring", r: 5, col: "rgba(43,38,32,.35)", decay: 2.8, life: .7 });
-  }
-  // 减速霜渍（脚下留痕）
-  if (e.slowT > 0 && Math.random() < .35) {
-    P(x + (Math.random() - .5) * 10, y + e.r * .5, { r: 1.6, col: "rgba(120,170,165,.5)", decay: .55, life: 1.5 });
-  }
-  ctx.globalAlpha = .92; ctx.fillStyle = INK;
-  const r = e.r;
-  const frozen = e.slowT > 0, stunned = e.stunT > 0;
-  switch (e.type) {
-    case "grunt": { // 四足兽
-      const b = wob * .4;
-      ctx.beginPath(); ctx.ellipse(0, b * .4, r, r * .72, 0, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(r * .7, b * .4 - 3); ctx.quadraticCurveTo(r * 1.7, b * .4 - 9, r * 1.9, b * .4 - 2);
-      ctx.quadraticCurveTo(r * 1.4, b * .4 + 2, r * .7, b * .4 + 3); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(-r * .5, -r * .6 + b * .3, r * .5, r * .42, -.5, 0, TAU); ctx.fill();
-      for (const dx of [-3, 3]) { ctx.beginPath(); ctx.moveTo(dx, r * .6); ctx.quadraticCurveTo(dx * 1.4, r * 1.5 + (dx > 0 ? b * 2 : -b * 2), dx * .8, r * 1.8); ctx.strokeStyle = "rgba(43,38,32,.85)"; ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.stroke(); }
-      ctx.beginPath(); ctx.moveTo(-r * .85, -r * .75); ctx.lineTo(-r * 1.15, -r * 1.25); ctx.lineTo(-r * .6, -r * 1.05); ctx.fill(); // 耳
-      break;
-    }
-    case "fox": { // 赤瞳狐：流线低伏
-      const b = wob * .6;
-      // 速度残影
-      ctx.save(); ctx.globalAlpha = .18;
-      ctx.beginPath(); ctx.ellipse(10, b * .3, r * .9, r * .55, 0, 0, TAU); ctx.fill(); ctx.restore();
-      ctx.beginPath(); ctx.moveTo(r * 1.2, b * .2);
-      ctx.quadraticCurveTo(0, -r * .8 + b * .5, -r * 1.4, b * .2);
-      ctx.quadraticCurveTo(0, r * .75 + b * .3, r * 1.2, b * .2); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(-r * 1.1, 0); ctx.quadraticCurveTo(-r * 2.1, -r * .9 + b, -r * 2.5, b * .5);
-      ctx.quadraticCurveTo(-r * 1.8, b * .8, -r * 1.2, r * .5); ctx.fill(); // 长尾
-      ctx.beginPath(); ctx.moveTo(-r * .9, -r * .4); ctx.lineTo(-r * 1.3, -r * 1.3); ctx.lineTo(-r * .45, -r * .85); ctx.fill(); // 尖耳
-      for (const dx of [-2, 2]) { ctx.strokeStyle = "rgba(43,38,32,.8)"; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(dx * .6 * r, r * .5); ctx.lineTo(dx * .5 * r, r * 1.3 + b * 2); ctx.stroke(); }
-      break;
-    }
-    case "scale": { // 鳞甲妖：宽体+背甲
-      const b = wob * .25;
-      ctx.beginPath(); ctx.ellipse(0, b * .4, r * 1.2, r * .95, 0, 0, TAU); ctx.fill();
-      // 甲片弧纹
-      ctx.strokeStyle = "rgba(232,224,206,.4)"; ctx.lineWidth = 1.1;
-      for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(r * .1, b * .4 + r * .5, i * r * .32, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
-      ctx.beginPath(); ctx.ellipse(-r * 1.05, -r * .35 + b * .3, r * .42, r * .34, .3, 0, TAU); ctx.fill(); // 首
-      for (const dx of [-4, -1.5, 1.5, 4]) { ctx.strokeStyle = "rgba(43,38,32,.85)"; ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(dx * .28 * r, r * .8); ctx.lineTo(dx * .3 * r, r * 1.5); ctx.stroke(); }
-      break;
-    }
-    case "boat": { // 御空飞舟
-      ctx.save();
-      // 底云
-      ctx.globalAlpha = .5; ctx.fillStyle = PAPER;
-      ctx.beginPath(); ctx.ellipse(0, r * .9, r * 1.3, r * .4, 0, 0, TAU); ctx.fill();
-      ctx.globalAlpha = .92; ctx.fillStyle = INK;
-      // 船体
-      ctx.beginPath(); ctx.moveTo(-r * 1.3, 0); ctx.quadraticCurveTo(0, r * .75, r * 1.3, 0);
-      ctx.quadraticCurveTo(0, r * .2, -r * 1.3, 0); ctx.fill();
-      // 桅+帆
-      ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(0, -r * 1.7); ctx.stroke();
-      ctx.fillStyle = "rgba(93,61,107,.8)";
-      ctx.beginPath(); ctx.moveTo(1, -r * 1.6); ctx.quadraticCurveTo(r * 1.1, -r * 1.2, r * .8, -r * .3);
-      ctx.quadraticCurveTo(r * .4, -r * .7, 1, -r * .5); ctx.fill();
-      break;
-    }
-    case "wolf": { // 妖狼：低伏窄身
-      const b = wob * .8;
-      ctx.beginPath(); ctx.ellipse(0, b * .3, r * 1.25, r * .5, .08, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(-r * 1.05, -r * .3 + b * .4, r * .45, r * .32, .4, 0, TAU); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(-r * 1.2, -r * .5); ctx.lineTo(-r * 1.45, -r * 1.05); ctx.lineTo(-r * .85, -r * .8); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(r * 1.1, b * .2); ctx.quadraticCurveTo(-r * .5, -r * 1.1, -r * 1.6, -r * .2 + b); ctx.quadraticCurveTo(-r * .5, r * .4, r * 1.1, b * .4); ctx.fill(); // 尾
-      for (let i = 0; i < 4; i++) { const lx = -r * .7 + i * r * .45; ctx.strokeStyle = "rgba(43,38,32,.85)"; ctx.lineWidth = 1.7; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(lx, r * .4); ctx.lineTo(lx + Math.sin(t * 12 + i) * 3, r * 1.2); ctx.stroke(); }
-      break;
-    }
-    case "treant": { // 再生木妖：树干人形
-      const b = wob * .2;
-      ctx.strokeStyle = INK; ctx.lineWidth = r * .55; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(0, r); ctx.quadraticCurveTo(b * 2, 0, 0, -r * .7); ctx.stroke();
-      // 枝杈臂
-      ctx.lineWidth = r * .22;
-      ctx.beginPath(); ctx.moveTo(-r * .15, -r * .1); ctx.quadraticCurveTo(-r * 1.2, -r * .5, -r * 1.3, b - r * .1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(r * .15, -r * .1); ctx.quadraticCurveTo(r * 1.2, -r * .5, r * 1.3, -b - r * .1); ctx.stroke();
-      // 叶团
-      ctx.fillStyle = "rgba(90,107,61,.75)";
-      for (const [lx, ly, lr] of [[0, -r * 1.15, r * .75], [-r * .9, -r * .5, r * .5], [r * .9, -r * .5, r * .5]]) {
-        ctx.beginPath(); ctx.arc(lx, ly + b, lr, 0, TAU); ctx.fill();
-      }
-      // 再生绿雾
-      if (e.hp < e.maxhp) {
-        ctx.globalAlpha = .3 + Math.sin(t * 3) * .1; ctx.fillStyle = GREEN;
-        ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, TAU); ctx.fill();
-      }
-      break;
-    }
-    case "boss": { // 千年妖王
-      const b = wob * .3;
-      // 妖气环
-      ctx.save(); ctx.globalAlpha = .3;
-      for (let i = 0; i < 3; i++) {
-        ctx.strokeStyle = PURPLE; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(0, b * .3, r * (1.4 + i * .35), r * (.5 + i * .18), Math.sin(t * .8 + i) * .2, 0, TAU); ctx.stroke();
-      }
-      ctx.restore();
-      ctx.fillStyle = INK;
-      ctx.beginPath(); ctx.ellipse(0, b * .3, r * 1.25, r * .95, 0, 0, TAU); ctx.fill(); // 巨躯
-      ctx.beginPath(); ctx.ellipse(-r * .95, -r * .55 + b * .3, r * .55, r * .45, .3, 0, TAU); ctx.fill(); // 首
-      // 双角
-      ctx.beginPath(); ctx.moveTo(-r * 1.2, -r * .9); ctx.quadraticCurveTo(-r * 1.8, -r * 1.9, -r * 1.0, -r * 1.6);
-      ctx.quadraticCurveTo(-r * 1.05, -r * 1.2, -r * .95, -r * .95); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(-r * .6, -r * .95); ctx.quadraticCurveTo(-r * .3, -r * 2.0, -r * .1, -r * 1.5);
-      ctx.quadraticCurveTo(-r * .4, -r * 1.15, -r * .55, -r * .95); ctx.fill();
-      // 鬃毛锯齿
-      for (let i = 0; i < 5; i++) {
-        const mx = -r * .3 + i * r * .34;
-        ctx.beginPath(); ctx.moveTo(mx, -r * .8 + b); ctx.lineTo(mx + r * .17, -r * 1.35 + b); ctx.lineTo(mx + r * .34, -r * .8 + b); ctx.fill();
-      }
-      for (const dx of [-6, 0, 6]) { ctx.strokeStyle = "rgba(43,38,32,.9)"; ctx.lineWidth = 3.6; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(dx * .22 * r, r * .8); ctx.lineTo(dx * .3 * r, r * 1.5 + b * 2); ctx.stroke(); }
-      break;
-    }
-  }
-  // 朱砂点睛（多目：狐1 wolf1 boss2）
-  ctx.globalAlpha = 1; ctx.fillStyle = e.hitT > 0 ? "#fff" : RED;
-  const eyes = e.type === "boss" ? [[-r * 1.05, -r * .62], [-r * .72, -r * .68]] : e.type === "boat" ? [] : [[-e.r * .68, -e.r * .7]];
-  for (const [ex, ey] of eyes) { ctx.beginPath(); ctx.arc(ex, ey, e.type === "boss" ? 2.2 : 1.5, 0, TAU); ctx.fill(); }
-  // 受击白闪
-  if (e.hitT > 0) { ctx.globalAlpha = e.hitT * 2.4; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(0, 0, r * 1.15, 0, TAU); ctx.fill(); }
-  // 减速霜蓝
-  if (frozen) {
-    ctx.globalAlpha = .3; ctx.fillStyle = CYAN;
-    ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, TAU); ctx.fill();
-    ctx.globalAlpha = .8; ctx.strokeStyle = "#bfe3e0"; ctx.lineWidth = 1;
-    for (let i = 0; i < 3; i++) { const a = e.wob + i * 2.1; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .5, Math.sin(a) * r * .5); ctx.lineTo(Math.cos(a) * r * 1.1, Math.sin(a) * r * 1.1); ctx.stroke(); }
-  }
-  ctx.restore();
-  // 定身冰晶（在 restore 后画避免随体型变形）
-  if (stunned) {
-    ctx.save(); ctx.translate(x, y); ctx.globalAlpha = .85;
-    ctx.strokeStyle = "#9fd8d3"; ctx.lineWidth = 1.4;
-    for (let i = 0; i < 4; i++) {
-      const a = i * TAU / 4 + .4, rr = e.r * 1.3;
-      ctx.beginPath(); ctx.moveTo(0, -4);
-      ctx.lineTo(Math.cos(a) * rr * .3, Math.sin(a) * rr * .3 - 4);
-      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-  // 燃烧火点
-  if (e.burnT > 0 && Math.random() < .3) {
-    P(x + (Math.random() - .5) * e.r, y - Math.random() * e.r, { vy: -30 - Math.random() * 20, r: 1.6, col: "#c45a28", decay: 2 });
-  }
-  // 血条墨痕（受损才显示；BOSS 大血条）
-  if (e.hp < e.maxhp - .5) {
-    const bw = e.type === "boss" ? 46 : 22, yy = y - e.r - (fly ? 26 : 11);
-    ctx.fillStyle = "rgba(43,38,32,.25)"; ctx.fillRect(x - bw / 2, yy, bw, 3.4);
-    const ratio = Math.max(0, e.hp / e.maxhp);
-    ctx.fillStyle = e.type === "boss" ? RED : INK;
-    ctx.fillRect(x - bw / 2, yy, bw * ratio, 3.4);
-    // 墨痕末端须
-    ctx.fillStyle = "rgba(43,38,32,.3)";
-    ctx.fillRect(x - bw / 2 + bw * ratio, yy + 1, 2.5, 1.4);
+    const a = Math.random() * Math.PI * 2, sp = 40 + Math.random() * 60;
+    R3D.emit(x, 12, z, { vx: Math.cos(a) * sp, vy: Math.random() * 50, vz: Math.sin(a) * sp, r: 1.5, col: cols[ele] || 0x2b2620, decay: 2.4 });
   }
 }
-
-/* ---------------- 阵法绘制（6 基础 + 16 融合） ---------------- */
-const ELE_COL = { metal: RED, fire: "#c45a28", ice: CYAN, thunder: GOLD, wind: GREEN, qi: GOLD, blend: PURPLE };
-function towerColors(t) {
-  const T = C.TOWERS[t.type];
-  if (T) return [T.color, T.color];
-  const F = t.type.startsWith("zhenwu_") ? (C.TOWERS[t.type.slice(7)] || { color: INK }) : (C.FUSIONS[t.type] || { color: PURPLE });
-  return [F.color, GOLD];
-}
-function runeFor(ele, t) { // 属性符纹图形
-  ctx.save(); ctx.strokeStyle = arguments[2]; ctx.lineWidth = 1.4; ctx.lineCap = "round";
-  const R = arguments[3];
-  switch (ele) {
-    case "metal": for (let i = 0; i < 3; i++) { const a = t + i * TAU / 3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .5, Math.sin(a) * R * .5); ctx.lineTo(Math.cos(a + .5) * R, Math.sin(a + .5) * R); ctx.stroke(); } break;
-    case "fire": for (let i = 0; i < 4; i++) { const a = t + i * TAU / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .4, Math.sin(a) * R * .4); ctx.quadraticCurveTo(Math.cos(a + .4) * R * .9, Math.sin(a + .4) * R * .9, Math.cos(a + .8) * R * .5, Math.sin(a + .8) * R * .5); ctx.stroke(); } break;
-    case "ice": for (let i = 0; i < 6; i++) { const a = t * .6 + i * TAU / 6; const px = Math.cos(a) * R, py = Math.sin(a) * R; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px * .55, py * .55); ctx.moveTo(px * .82 * Math.cos(.4) - py * .82 * Math.sin(.4), px * .82 * Math.sin(.4) + py * .82 * Math.cos(.4)); ctx.stroke(); } break;
-    case "thunder": for (let i = 0; i < 2; i++) { const a = t + i * Math.PI; ctx.beginPath(); let px = Math.cos(a) * R * .2, py = Math.sin(a) * R * .2; ctx.moveTo(px, py); for (let s = 1; s <= 3; s++) { const aa = a + (s % 2 ? .35 : -.35); px = Math.cos(aa) * R * s / 3; py = Math.sin(aa) * R * s / 3; ctx.lineTo(px, py); } ctx.stroke(); } break;
-    case "wind": for (let i = 0; i < 3; i++) { const a = t * 1.4 + i * TAU / 3; ctx.beginPath(); ctx.arc(0, 0, R * .75, a, a + 1.1); ctx.stroke(); } break;
-    case "qi": for (let i = 0; i < 5; i++) { const a = t * .8 + i * TAU / 5; ctx.beginPath(); ctx.arc(Math.cos(a) * R * .6, Math.sin(a) * R * .6, 1.6, 0, TAU); ctx.stroke(); } break;
-    default: for (let i = 0; i < 4; i++) { const a = t + i * TAU / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .4, Math.sin(a) * R * .4); ctx.lineTo(-Math.cos(a) * R * .4, -Math.sin(a) * R * .4); ctx.stroke(); }
-  }
-  ctx.restore();
-}
-function drawTower(t, time) {
-  const [c1, c2] = towerColors(t);
-  const R = C.radiusOf(t);
-  const st = C.stats(t) || {};
-  const isF = t.kind === "fusion";
-  ctx.save(); ctx.translate(t.x, t.y);
-  // 选中/悬停范围圈
-  const showRange = (selTower === t || hoverTower === t || dragTower);
-  if (showRange && C.towerRange(t) > 0) {
-    ctx.setLineDash([4, 8]); ctx.strokeStyle = c1 + "66"; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.arc(0, 0, C.towerRange(t), 0, TAU); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = .05; ctx.fillStyle = c1;
-    ctx.beginPath(); ctx.arc(0, 0, C.towerRange(t), 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
-  }
-  // 底盘阴影
-  ctx.fillStyle = "rgba(43,38,32,.18)";
-  ctx.beginPath(); ctx.ellipse(2, 4, R * 1.05, R * .9, 0, 0, TAU); ctx.fill();
-  // 攻击反冲
-  const recoil = Math.max(0, (t.cd || 0) > (st.rate || 1) * .8 ? .15 : 0);
-  const scale = 1 + recoil;
-  ctx.scale(scale, scale);
-  // 符阵底盘
-  ctx.fillStyle = PAPER;
-  ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fill();
-  ctx.strokeStyle = "rgba(43,38,32,.9)"; ctx.lineWidth = isF ? 3.6 : 3; ctx.stroke();
-  // 属性环（融合阵双环）
-  ctx.strokeStyle = c1; ctx.lineWidth = isF ? 2.4 : 2;
-  ctx.beginPath(); ctx.arc(0, 0, R - 5, 0, TAU); ctx.stroke();
-  if (isF) { ctx.strokeStyle = c2; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0, 0, R - 9, 0, TAU); ctx.stroke(); }
-  // 缓转符纹
-  runeFor(st.ele || "blend", t.spin, c1, R * .62);
-  // 聚灵/产灵阵：吸气粒子
-  if ((st.qiRate || st.qiPerSec) && Math.random() < .25) {
-    const a = Math.random() * TAU, d = R * (2 + Math.random() * 1.5);
-    P(t.x + Math.cos(a) * d, t.y + Math.sin(a) * d, { vx: -Math.cos(a) * 40, vy: -Math.sin(a) * 40, r: 1.4, col: GOLD, decay: 1.2 });
-  }
-  // 太极芯
-  ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, TAU); ctx.fillStyle = INK; ctx.fill();
-  ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(1.5, -1.5, 1.5, 0, TAU); ctx.fill();
-  // 等级星点（3 级为尖）
-  for (let i = 0; i < t.lvl; i++) {
-    const a = -Math.PI / 2 + (i - 1) * .5;
-    ctx.fillStyle = t.lvl === 3 ? RED : INK;
-    ctx.beginPath(); ctx.arc(Math.cos(a) * (R + 6), Math.sin(a) * (R + 6), 2, 0, TAU); ctx.fill();
-  }
-  // 三级阵法：环绕飞剑 / 符珠
-  if (t.lvl === 3 && (st.rate || 0) > 0) {
-    const n = 3, orbit = R + 13, spin = t.spin * 1.6;
-    if (st.proj === "sword" || st.proj === "frostSword" || st.proj === "thunderSword" || st.proj === "fireSword") {
-      for (let i = 0; i < n; i++) {
-        const a = spin + i * TAU / n;
-        ctx.save(); ctx.translate(Math.cos(a) * orbit, Math.sin(a) * orbit * .82); ctx.rotate(a + Math.PI / 2);
-        ctx.strokeStyle = c1; ctx.lineWidth = 1.6; ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(-4.5, 0); ctx.lineTo(4.5, 0); ctx.stroke();
-        ctx.strokeStyle = "rgba(255,252,240,.85)"; ctx.lineWidth = .7;
-        ctx.beginPath(); ctx.moveTo(-2.4, 0); ctx.lineTo(2.4, 0); ctx.stroke();
-        ctx.restore();
-      }
-    } else {
-      for (let i = 0; i < n; i++) {
-        const a = spin * .8 + i * TAU / n;
-        ctx.fillStyle = c1; ctx.globalAlpha = .85;
-        ctx.beginPath(); ctx.arc(Math.cos(a) * orbit, Math.sin(a) * orbit * .82, 1.8, 0, TAU); ctx.fill();
-      }
-    }
-  }
-  // 境界绕行金粒（金丹 2 粒 / 元婴 4 粒）
-  if ((t.realm || 0) >= 2) {
-    const nOrb = t.realm >= 3 ? 4 : 2;
-    for (let i = 0; i < nOrb; i++) {
-      const a = -t.spin * 1.2 + i * TAU / nOrb;
-      const ox = Math.cos(a) * (R + 5), oy = Math.sin(a) * (R + 5) * .66;
-      ctx.fillStyle = "rgba(214,174,90,.9)";
-      ctx.beginPath(); ctx.arc(ox, oy, 1.5, 0, TAU); ctx.fill();
-      const gr = ctx.createRadialGradient(ox, oy, 0, ox, oy, 4.5);
-      gr.addColorStop(0, "rgba(214,174,90,.4)"); gr.addColorStop(1, "rgba(214,174,90,0)");
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(ox, oy, 4.5, 0, TAU); ctx.fill();
-    }
-  }
-  // 境界光环（每境一圈金环）
-  for (let i = 0; i < (t.realm || 0); i++) {
-    ctx.strokeStyle = `rgba(168,132,44,${.5 - i * .12})`; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.arc(0, 0, R + 3 + i * 4, 0, TAU); ctx.stroke();
-  }
-  // 词条角标（左下小点）
-  if (t.traits.length) {
-    ctx.fillStyle = CYAN;
-    ctx.beginPath(); ctx.arc(-R - 4, R - 2, 3, 0, TAU); ctx.fill();
-    ctx.fillStyle = PAPER; ctx.font = "bold 6px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(String(t.traits.length), -R - 4, R - 1);
-  }
-  // 拖拽中半透明
-  if (dragTower === t) ctx.globalAlpha = .6;
-  ctx.restore();
-  // 融合阵顶光
-  if (isF && Math.random() < .06) {
-    P(t.x + (Math.random() - .5) * 30, t.y - 8, { vy: -18, r: 1.8, col: "rgba(168,132,44,.8)", decay: .9 });
-  }
-}
-// 布阵预览（跟随鼠标）
-function drawPlacementGhost() {
-  if (!selKey || mouseX < 0) return;
-  const T = C.TOWERS[selKey];
-  const chk = C.canPlace(g, mouseX, mouseY, selKey);
-  const col = chk.ok ? T.color : RED;
-  ctx.save(); ctx.globalAlpha = .75;
-  // 范围预览
-  if (T.range > 0) { ctx.setLineDash([4, 8]); ctx.strokeStyle = col + "88"; ctx.beginPath(); ctx.arc(mouseX, mouseY, T.range, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
-  ctx.fillStyle = PAPER; ctx.strokeStyle = col; ctx.lineWidth = 2.4;
-  ctx.beginPath(); ctx.arc(mouseX, mouseY, C.TOWER_R, 0, TAU); ctx.fill(); ctx.stroke();
-  ctx.strokeStyle = col; ctx.lineWidth = 1.6;
-  ctx.beginPath(); ctx.arc(mouseX, mouseY, C.TOWER_R - 5, 0, TAU); ctx.stroke();
-  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(mouseX, mouseY, 4, 0, TAU); ctx.fill();
-  if (!chk.ok) { ctx.fillStyle = RED; ctx.font = "12px serif"; ctx.textAlign = "center"; ctx.fillText(chk.why, mouseX, mouseY - 26); }
-  ctx.restore();
-}
-// 融合拖线：可融合目标高亮
-function drawFuseLinks() {
-  if (!dragTower) return;
-  const dt = dragTower;
-  for (const o of g.towers) {
-    if (o === dt) continue;
-    const chk = C.canFuse(g, dt.id, o.id);
-    if (chk.ok) {
-      ctx.save();
-      ctx.strokeStyle = "rgba(168,132,44,.9)"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-      ctx.beginPath(); ctx.moveTo(dt.x, dt.y); ctx.lineTo(o.x, o.y); ctx.stroke(); ctx.setLineDash([]);
-      // 目标高亮环
-      ctx.strokeStyle = GOLD; ctx.lineWidth = 2.4;
-      ctx.beginPath(); ctx.arc(o.x, o.y, C.radiusOf(o) + 6 + Math.sin(performance.now() / 150) * 2, 0, TAU); ctx.stroke();
-      // 融合名提示
-      ctx.fillStyle = GOLD; ctx.font = "12px serif"; ctx.textAlign = "center";
-      ctx.fillText(chk.fusion.name, (dt.x + o.x) / 2, (dt.y + o.y) / 2 - 12);
-      ctx.restore();
-    }
-  }
-}
-
-/* ---------------- 弹道特效 ---------------- */
-function drawProjectile(p) {
-  const ang = Math.atan2(p.ty - p.y, p.tx - p.x);
-  ctx.save(); ctx.translate(p.x, p.y);
-  switch (p.kind) {
-    case "sword": case "frostSword": case "thunderSword": case "fireSword": {
-      ctx.rotate(ang);
-      const main = p.kind === "frostSword" ? CYAN : p.kind === "thunderSword" ? GOLD : p.kind === "fireSword" ? "#c45a28" : RED;
-      // 拖尾
-      ctx.strokeStyle = main + "44"; ctx.lineWidth = 4; ctx.lineCap = "round";
-      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(6, 0); ctx.stroke();
-      // 剑身
-      ctx.strokeStyle = main; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke();
-      ctx.strokeStyle = "rgba(255,252,240,.95)"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.stroke();
-      // 剑尖光
-      ctx.fillStyle = "rgba(255,252,240,.9)";
-      ctx.beginPath(); ctx.arc(9, 0, 1.6, 0, TAU); ctx.fill();
-      break;
-    }
-    case "fire": {
-      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, 7);
-      gr.addColorStop(0, "#ffd9a0"); gr.addColorStop(.5, "#c45a28"); gr.addColorStop(1, "rgba(196,90,40,0)");
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill();
-      if (Math.random() < .5) P(p.x, p.y, { vy: -14, r: 1.5, col: "#c45a28", decay: 2.4 });
-      break;
-    }
-    case "bolt": { // 冰珠
-      ctx.fillStyle = CYAN; ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "#bfe3e0"; ctx.lineWidth = 1;
-      for (let i = 0; i < 3; i++) { const a = i * TAU / 3 + performance.now() / 300; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 2, Math.sin(a) * 2); ctx.lineTo(Math.cos(a) * 5.5, Math.sin(a) * 5.5); ctx.stroke(); }
-      break;
-    }
-    case "lock": { // 气锁链
-      ctx.rotate(ang);
-      ctx.strokeStyle = GREEN; ctx.lineWidth = 1.6;
-      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-6 + i * 6, 0, 3, -1.2, 1.2); ctx.stroke(); }
-      break;
-    }
-  }
-  ctx.restore();
-}
-// 事件特效（雷击/爆炸/连锁/融合/渡劫…）
 function fxEvents(evs) {
   for (const ev of evs) {
     switch (ev.t) {
       case "shot":
-        if (ev.kind === "fire") AudioFX.fire(); else if (ev.kind === "bolt") AudioFX.ice(); else if (ev.kind === "lock") AudioFX.sword(); else AudioFX.sword();
+        if (ev.kind === "fire") AudioFX.fire(); else if (ev.kind === "bolt") AudioFX.ice(); else AudioFX.sword();
         break;
       case "hit":
-        burstHit(ev.x, ev.y, ev.ele);
-        if (ev.crit) { floatText(ev.x, ev.y - 14, "暴 " + ev.dmg, RED, 15); P(ev.x, ev.y, { type: "ring", r: 10, col: "rgba(158,43,37,.7)", decay: 3 }); }
-        // 剑系命中斩痕（交叉白线，随角度微变）
-        if (ev.ele === "metal" || ev.ele === "ice") {
-          const a0 = Math.random() * Math.PI;
-          const col = ev.ele === "ice" ? "rgba(191,227,224," : "rgba(255,252,240,";
-          fxLines.push({ life: 1, decay: 8.5, draw(c) {
-            c.save(); c.translate(ev.x, ev.y); c.rotate(a0);
-            c.strokeStyle = col + (.95 * this.life) + ")"; c.lineWidth = 1.6; c.lineCap = "round";
-            c.beginPath(); c.moveTo(-8 * this.life - 3, 0); c.lineTo(8 * this.life + 3, 0); c.stroke();
-            c.rotate(1.1);
-            c.lineWidth = 1;
-            c.beginPath(); c.moveTo(-6 * this.life - 2, 0); c.lineTo(6 * this.life + 2, 0); c.stroke();
-            c.restore();
-          } });
-        }
+        burstHit3D(ev.x, ev.y, ev.ele);
+        if (ev.crit) { floatText3D(ev.x, ev.y, "暴 " + ev.dmg, "#9e2b25", 15); R3D.emit(ev.x, 12, ev.y, { r: 6, col: 0x9e2b25, decay: 3 }); }
         break;
       case "kill":
-        burstKill(ev.x, ev.y, ev.big);
+        burstKill3D(ev.x, ev.y, ev.big);
         AudioFX.kill();
-        floatText(ev.x, ev.y - 10, "+" + ev.bounty, "#8a6d1e", 12);
+        floatText3D(ev.x, ev.y, "+" + ev.bounty, "#8a6d1e", 12);
         break;
-      case "bolt": { // 落雷（存入暂存线，渲染末段绘制，否则被背景覆盖）
+      case "bolt": {
         AudioFX.thunder();
-        const x0 = ev.x, y0 = ev.y, x1 = ev.tx, y1 = ev.ty;
-        const zig = [];
-        const nSeg = 6;
-        for (let i = 0; i <= nSeg; i++) {
-          const tt2 = i / nSeg;
-          zig.push([x0 + (x1 - x0) * tt2 + (i === 0 || i === nSeg ? 0 : (Math.random() - .5) * 16),
-                    (y0 - 40) + (y1 - (y0 - 40)) * tt2 + (i === 0 || i === nSeg ? 0 : (Math.random() - .5) * 8)]);
+        R3D.boltFX(ev.x, 90, ev.y - 40, ev.tx, 6, ev.ty);
+        for (let i = 0; i < 7; i++) {
+          R3D.emit(ev.tx, 10, ev.ty, { vx: (Math.random() - .5) * 170, vy: 90 + Math.random() * 110, vz: (Math.random() - .5) * 170, r: 1.6, col: 0xa8842c, decay: 2.4, grav: 320 });
         }
-        fxLines.push({ life: 1, decay: 7, draw(c) {
-          c.lineCap = "round"; c.lineJoin = "round";
-          c.strokeStyle = `rgba(168,132,44,${.9 * this.life})`; c.lineWidth = 2.6;
-          c.beginPath(); c.moveTo(zig[0][0], zig[0][1]);
-          for (let i = 1; i < zig.length; i++) c.lineTo(zig[i][0], zig[i][1]);
-          c.stroke();
-          c.strokeStyle = `rgba(255,250,220,${.9 * this.life})`; c.lineWidth = 1; c.stroke();
-        } });
-        P(x1, y1, { type: "ring", r: 14, col: "rgba(168,132,44,.6)", decay: 3 });
-        for (let i = 0; i < 6; i++) P(x1, y1, { vx: (Math.random() - .5) * 160, vy: -Math.random() * 130, r: 1.6, col: GOLD, decay: 2.6, grav: 300 });
         shake = Math.max(shake, 2.5);
         break;
       }
-      case "chain": { // 连锁弧（同上，暂存线）
-        const pts = [[ev.x, ev.y]];
-        for (let i = 1; i <= 4; i++) {
-          const tt2 = i / 4;
-          pts.push([ev.x + (ev.tx - ev.x) * tt2 + (i === 4 ? 0 : (Math.random() - .5) * 10),
-                    ev.y + (ev.ty - ev.y) * tt2 + (i === 4 ? 0 : (Math.random() - .5) * 10)]);
-        }
-        fxLines.push({ life: 1, decay: 9, draw(c) {
-          c.strokeStyle = `rgba(168,132,44,${.75 * this.life})`; c.lineWidth = 1.6; c.lineCap = "round";
-          c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
-          for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
-          c.stroke();
-        } });
+      case "chain":
+        R3D.boltFX(ev.x, 14, ev.y, ev.tx, 12, ev.ty);
         break;
-      }
-      case "boom": { // 溅射墨爆
-        const col = ev.ele === "fire" ? "rgba(196,90,40,.5)" : "rgba(93,61,107,.45)";
-        P(ev.x, ev.y, { type: "ink", r: ev.r * .55, col, decay: 2 });
-        P(ev.x, ev.y, { type: "ring", r: ev.r * .7, col: ev.ele === "fire" ? "rgba(196,90,40,.6)" : "rgba(43,38,32,.5)", decay: 2.4 });
-        for (let i = 0; i < 8; i++) {
-          const a = Math.random() * TAU;
-          P(ev.x, ev.y, { vx: Math.cos(a) * 90, vy: Math.sin(a) * 90 - 30, r: 1.8, col: ev.ele === "fire" ? "#c45a28" : PURPLE, decay: 2, grav: 160 });
+      case "boom": {
+        const col = ev.ele === "fire" ? 0xc45a28 : 0x5d3d6b;
+        for (let i = 0; i < 14; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = 60 + Math.random() * 90;
+          R3D.emit(ev.x, 10, ev.y, { vx: Math.cos(a) * sp, vy: 50 + Math.random() * 90, vz: Math.sin(a) * sp, r: 2.2, col, decay: 1.8, grav: 200 });
         }
-        // 火系爆点烟柱（缓慢升腾的深色烟团）
+        R3D.emit(ev.x, 12, ev.y, { r: ev.r * .5, col, decay: 2, life: 1.2 });
         if (ev.ele === "fire") {
-          for (let i = 0; i < 5; i++) {
-            P(ev.x + (Math.random() - .5) * ev.r * .6, ev.y - 4,
-              { vy: -22 - Math.random() * 18, vx: (Math.random() - .5) * 12, r: 3.4 + Math.random() * 2.6,
-                col: "rgba(70,62,54,.34)", decay: .8, life: 1.6 });
+          for (let i = 0; i < 6; i++) {
+            R3D.emit(ev.x + (Math.random() - .5) * ev.r, 12, ev.y + (Math.random() - .5) * ev.r * .6,
+              { vy: 26 + Math.random() * 20, vx: (Math.random() - .5) * 14, r: 3.4 + Math.random() * 2, col: 0x3c352e, decay: .8, life: 1.7 });
           }
         }
         break;
       }
-      case "stun": // 定身：脚下浮现符阵圈
-        P(ev.x, ev.y, { type: "ring", r: 8, col: "rgba(159,216,211,.8)", decay: 2.6 });
-        fxLines.push({ life: 1, decay: 1.1, draw(c) {
-          c.save(); c.translate(ev.x, ev.y);
-          c.strokeStyle = `rgba(120,170,165,${.8 * this.life})`; c.lineWidth = 1.2;
-          c.beginPath(); c.ellipse(0, 3, 16, 6.5, 0, 0, TAU); c.stroke();
-          c.beginPath(); c.ellipse(0, 3, 10, 4, 0, 0, TAU); c.stroke();
-          for (let i = 0; i < 4; i++) {
-            const a = i * TAU / 4 + .5;
-            c.beginPath(); c.moveTo(Math.cos(a) * 13, 3 + Math.sin(a) * 5.4);
-            c.lineTo(Math.cos(a) * 18.5, 3 + Math.sin(a) * 7.6); c.stroke();
-          }
-          c.restore();
-        } });
+      case "stun":
+        for (let i = 0; i < 8; i++) {
+          const a = i * Math.PI / 4;
+          R3D.emit(ev.x + Math.cos(a) * 12, 6, ev.y + Math.sin(a) * 6, { vy: 14, r: 1.6, col: 0x9fd8d3, decay: 1.2, life: 1.3 });
+        }
         break;
       case "leak":
         AudioFX.leak();
         shake = Math.max(shake, 5);
-        floatText(ev.x - 20, ev.y, "气运 -" + ev.dmg, RED, 15);
-        P(C.GATE[0], C.GATE[1], { type: "ring", r: 26, col: "rgba(158,43,37,.8)", decay: 1.6 });
+        floatText3D(ev.x - 10, ev.y, "气运 -" + ev.dmg, "#9e2b25", 15);
         break;
-      case "waveClear":
-        toast(`第 ${ev.n + 1} 波平定 · 灵石 +${ev.bonus}`);
-        break;
+      case "waveClear": toast(`第 ${ev.n + 1} 波平定 · 灵石 +${ev.bonus}`); break;
       case "fuse": {
         AudioFX.fuse();
-        // 金光柱
-        for (let i = 0; i < 16; i++) {
-          P(ev.x + (Math.random() - .5) * 24, ev.y + 10, { vy: -60 - Math.random() * 60, r: 2, col: "rgba(168,132,44,.9)", decay: 1 });
+        for (let i = 0; i < 18; i++) {
+          R3D.emit(ev.x + (Math.random() - .5) * 20, 6, ev.y + (Math.random() - .5) * 20,
+            { vy: 70 + Math.random() * 80, r: 1.8, col: 0xa8842c, decay: .9, life: 1.4 });
         }
-        P(ev.x, ev.y, { type: "glow", r: 14, col: "rgba(168,132,44,.5)", decay: 1.2 });
-        floatText(ev.x, ev.y - 24, "◆ " + ev.name + " ◆", GOLD, 17);
+        floatText3D(ev.x, ev.y, "◆ " + ev.name + " ◆", "#a8842c", 17, 26);
         if (ev.isNew) { toast(`图鉴新添 · ${ev.name}`); renderCodexMini(); }
         shake = Math.max(shake, 3);
         break;
       }
       case "tribWin": {
         AudioFX.tribWin();
-        for (let i = 0; i < 24; i++) P(ev.x + (Math.random() - .5) * 20, ev.y, { vy: -90 - Math.random() * 90, r: 1.8, col: "rgba(200,160,60,.9)", decay: .8, life: 1.2 });
-        P(ev.x, ev.y, { type: "glow", r: 18, col: "rgba(200,160,60,.45)", decay: .9 });
-        floatText(ev.x, ev.y - 30, "渡劫功成 · " + ev.realm, GOLD, 16);
+        for (let i = 0; i < 26; i++) {
+          R3D.emit(ev.x + (Math.random() - .5) * 22, 6, ev.y + (Math.random() - .5) * 22,
+            { vy: 100 + Math.random() * 110, r: 1.8, col: 0xc8a03c, decay: .8, life: 1.5 });
+        }
+        floatText3D(ev.x, ev.y, "渡劫功成 · " + ev.realm, "#a8842c", 16, 30);
         break;
       }
       case "tribFail": {
         AudioFX.tribFail();
-        for (let i = 0; i < 14; i++) P(ev.x + (Math.random() - .5) * 26, ev.y, { vy: -40 - Math.random() * 40, vx: (Math.random() - .5) * 40, r: 2.4, col: "rgba(43,38,32,.7)", decay: .9 });
-        floatText(ev.x, ev.y - 30, "劫雷贯体 · 境陨一级", INK, 15);
+        for (let i = 0; i < 16; i++) {
+          R3D.emit(ev.x + (Math.random() - .5) * 26, 8, ev.y + (Math.random() - .5) * 26,
+            { vy: 40 + Math.random() * 50, vx: (Math.random() - .5) * 40, r: 2.6, col: 0x2b2620, decay: .9, life: 1.4 });
+        }
+        floatText3D(ev.x, ev.y, "劫雷贯体 · 境陨一级", "#2b2620", 15, 30);
         shake = Math.max(shake, 4);
         break;
       }
-      case "qiGift": floatText(C.GATE[0] - 60, C.GATE[1] - 30, "先行灵气 +" + ev.qi, CYAN, 13); break;
+      case "qiGift": floatText3D(C.GATE[0] - 50, C.GATE[1], "先行灵气 +" + ev.qi, "#3d6b6b", 13, 30); break;
       case "win": AudioFX.win(); showEnd(true); break;
       case "lose": AudioFX.lose(); showEnd(false); break;
     }
@@ -1118,16 +1057,15 @@ function bigLabel(msg) {
   clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 2000);
 }
 const _hudPrev = {};
-function bumpIf(id, v) { // 值变化时弹一下
+function bumpIf(id, v) {
   const el = $(id);
   if (_hudPrev[id] !== v) {
-    const up = (v > (_hudPrev[id] ?? v));
     el.textContent = v;
     el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
     _hudPrev[id] = v;
   }
 }
-function bumpSet(id, v, isHurt) { // 变化时按增减播放不同动画
+function bumpSet(id, v, isHurt) {
   const el = $(id);
   if (_hudPrev[id] !== undefined && _hudPrev[id] !== v) {
     el.textContent = v;
@@ -1144,7 +1082,6 @@ function syncHUD() {
   $("waven").textContent = g.endless ? g.wave + 1 : Math.min(g.wave + 1, 30);
   $("best").textContent = (codexSaved && codexSaved.bestWave) ? codexSaved.bestWave : "—";
   $("phasen").textContent = g.phase === "build" ? "备战" : g.phase === "wave" ? (g.endless ? "无尽妖潮" : "妖潮中") : g.phase === "win" ? "守山功成" : "山门失守";
-  // 阵法按钮可用性
   document.querySelectorAll(".tbtn").forEach((b, i) => {
     const k = C.BASE_KEYS[i]; b.disabled = g.gold < C.TOWERS[k].cost || g.phase === "over";
   });
@@ -1154,6 +1091,19 @@ function syncHUD() {
       `<div class="fpart"><span class="${p.boss ? 'boss' : (p.fly ? 'fly' : '')}">${p.boss ? "☠ " : (p.fly ? "☁ " : "")}${p.name}</span><span>×${p.count}</span></div>`
     ).join("") + `<div class="fpart" style="color:#8a6d1e"><span>清波奖励</span><span>${pv.bonus}</span></div>`;
   }
+  // 妖潮进度条（DOM）
+  const bar = $("wavebar");
+  if (g.phase === "wave" && g.waveTotal > 0) {
+    const done = g.waveTotal - g.buildQueue.length - g.enemies.length;
+    bar.style.display = "block";
+    bar.firstElementChild.style.width = (Math.max(0, Math.min(1, done / g.waveTotal)) * 100) + "%";
+  } else bar.style.display = "none";
+  // 倒计时
+  const cd = $("countdown");
+  if (g.phase === "build" && isFinite(g.autoT) && g.autoT > 0) {
+    cd.style.display = "block";
+    cd.textContent = `下波妖潮 ${Math.ceil(g.autoT)}s · 提前召妖有灵气赏`;
+  } else cd.style.display = "none";
 }
 function renderTowerBar() {
   const bar = $("towerbar");
@@ -1182,22 +1132,19 @@ function renderCodexMini() {
     if (seen) lit++;
     const d = document.createElement("div");
     d.title = seen ? `${f.name}：${f.desc}` : (f.secret ? "暗格 · 炼成才知" : `${f.name}（未炼成）`);
-    d.style.cssText = `height:20px;border:1px solid ${seen ? f.color : "rgba(43,38,32,.25)"};background:${seen ? f.color : "transparent"};opacity:${seen ? .9 : .3};font-size:9px;color:${seen ? PAPER : "#8a7f68"};display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap`;
+    d.style.cssText = `height:20px;border:1px solid ${seen ? f.color : "rgba(43,38,32,.25)"};background:${seen ? f.color : "transparent"};opacity:${seen ? .9 : .3};font-size:9px;color:${seen ? "#e8e0ce" : "#8a7f68"};display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap`;
     d.textContent = seen ? f.name.slice(0, 3) : "？";
     grid.appendChild(d);
   }
   $("codexCount").textContent = lit;
 }
-// 塔面板（升级/渡劫/索敌/出售/融合说明）
 function openTPanel(t) {
   const el = $("tpanel");
   const st = C.stats(t) || {};
-  const r = cv.getBoundingClientRect();
-  const sx = t.x * r.width / W, sy = t.y * r.height / H;
   el.style.display = "block";
-  el.style.left = Math.min(r.width - 170, sx + 24) + "px";
+  const [sx, sy] = R3D.toScreen(t.x, 10, t.y);
+  el.style.left = Math.min(960 - 180, sx + 26) + "px";
   el.style.top = Math.max(4, sy - 30) + "px";
-  const realmName = C.REALMS[t.realm];
   const canTrib = t.lvl >= 3 && t.realm < 3;
   const tribCost = C.TRIB_COST[t.realm];
   const failP = C.TRIB_FAIL[t.realm];
@@ -1205,7 +1152,7 @@ function openTPanel(t) {
   const upCost = t.lvl < 3 ? st.up && st.up[t.lvl] : null;
   const sellRefund = Math.round(t.spent * .7);
   el.innerHTML = `
-    <div style="font-size:14px;letter-spacing:1px"><b>${t.name}</b> <span style="color:${GOLD}">${realmName}</span> · ${t.lvl}级</div>
+    <div style="font-size:14px;letter-spacing:1px"><b>${t.name}</b> <span style="color:#a8842c">${C.REALMS[t.realm]}</span> · ${t.lvl}级</div>
     <div style="color:#8a7f68;font-size:11px">${st.desc || ""}</div>
     ${st.dmg ? `<div>伤害 ${Math.round(C.towerDmg(t))}${st.rate ? ` · 间隔 ${(st.rate * Math.pow(.92, t.lvl - 1)).toFixed(2)}s` : ""}${C.towerRange(t) ? ` · 射程 ${Math.round(C.towerRange(t))}` : ""}</div>` : `<div>产灵 ${(st.qiRate || st.qiPerSec || 0).toFixed(1)}/s</div>`}
     ${t.traits.length ? `<div class="traitsTag">词条：${t.traits.map(k => C.TRAITS[k].name).join("·")}</div>` : ""}
@@ -1219,14 +1166,12 @@ function openTPanel(t) {
       <button data-m="strongest">强</button><button data-m="weakest">弱</button>
     </div>
     <div class="row"><button id="tpSell">拆阵 返${sellRefund}灵石</button></div>
-    <div style="color:#8a7f68;font-size:10px;margin-top:2px">拖至相邻阵法可融合（失败率 ${canTrib ? Math.round(failP * 100) : "—"}% 指渡劫）</div>
+    <div style="color:#8a7f68;font-size:10px;margin-top:2px">拖至相邻阵法可融合（渡劫失败率 ${canTrib ? Math.round(failP * 100) : "—"}%）</div>
   `;
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { C.setTargetMode(g, t.id, b.dataset.m); openTPanel(t); });
   const up = $("tpUp"); if (up) up.onclick = () => { if (C.upgradeTower(g, t.id).ok) { AudioFX.build(); openTPanel(t); } };
   const trib = $("tpTrib"); if (trib) trib.onclick = () => { C.attemptTribulation(g, t.id); openTPanel(t); saveGame(); };
-  $("tpSell").onclick = () => {
-    C.sellTower(g, t.id); AudioFX.build(); closeTPanel();
-  };
+  $("tpSell").onclick = () => { C.sellTower(g, t.id); AudioFX.build(); closeTPanel(); };
 }
 function closeTPanel() { $("tpanel").style.display = "none"; selTower = null; }
 function saveGame() {
@@ -1241,7 +1186,7 @@ function showEnd(win) {
   ov.innerHTML = `<div class="sheet" style="text-align:center;min-width:340px">
     <h2>${win ? "山门无恙 · 守山功成" : "气运耗尽 · 山门失守"}</h2>
     <div style="font-size:15px;line-height:2">
-      妖潮第 <b style="color:var(--red)">${g.wave}</b> 波 ｜ 斩妖 <b style="color:var(--red)">${g.kills}</b><br>
+      妖潮第 <b style="color:#9e2b25">${g.wave}</b> 波 ｜ 斩妖 <b style="color:#9e2b25">${g.kills}</b><br>
       图鉴 ${Object.keys(Object.assign({}, (codexSaved && codexSaved.codex) || {}, g.codex)).length}/16 ｜ 无尽纪录 ${(codexSaved && codexSaved.bestWave) || g.wave}
     </div>
     ${endlessBtn}
@@ -1255,7 +1200,6 @@ function showEnd(win) {
   };
   $("restart").onclick = () => location.reload();
 }
-// 图鉴全览浮层
 $("codexBtn").onclick = () => {
   const ov = document.createElement("div");
   ov.className = "overlay";
@@ -1278,26 +1222,30 @@ $("codexBtn").onclick = () => {
   ov.onclick = e => { if (e.target === ov) ov.remove(); };
 };
 
-/* ---------------- 输入 ---------------- */
+/* ---------------- 输入（raycast 地面 → 2D 逻辑坐标） ---------------- */
 function canvasPos(e) {
   const r = cv.getBoundingClientRect();
-  return [(e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height];
+  return [(e.clientX - r.left) * 960 / r.width, (e.clientY - r.top) * 600 / r.height];
 }
 cv.addEventListener("pointermove", e => {
-  [mouseX, mouseY] = canvasPos(e);
+  const [px, py] = canvasPos(e);
+  const hit = R3D.pickGround(px, py);
+  if (hit) { mouseX = hit[0]; mouseY = hit[1]; }
   hoverTower = null;
   if (!dragTower && !selKey) {
-    for (const t of g.towers) if (Math.hypot(t.x - mouseX, t.y - mouseY) < C.radiusOf(t) + 6) { hoverTower = t; break; }
+    for (const t of g.towers) if (Math.hypot(t.x - mouseX, t.y - mouseY) < C.radiusOf(t) + 8) { hoverTower = t; break; }
   }
   if (dragTower) { dragTower.x = mouseX - dragDX; dragTower.y = mouseY - dragDY; }
 });
 cv.addEventListener("pointerdown", e => {
   AudioFX.ensure();
-  const [x, y] = canvasPos(e);
+  const [px, py] = canvasPos(e);
+  const hit = R3D.pickGround(px, py);
+  if (!hit) return;
+  const x = hit[0], y = hit[1];
   if (g.phase === "over") return;
-  // 1. 点塔：选中 + 可拖拽融合（记录原位，未融合则弹回）
   for (const t of g.towers) {
-    if (Math.hypot(t.x - x, t.y - y) < C.radiusOf(t) + 6) {
+    if (Math.hypot(t.x - x, t.y - y) < C.radiusOf(t) + 8) {
       selTower = t; openTPanel(t);
       dragTower = t; dragDX = x - t.x; dragDY = y - t.y;
       dragOX = t.x; dragOY = t.y;
@@ -1305,16 +1253,15 @@ cv.addEventListener("pointerdown", e => {
       return;
     }
   }
-  // 2. 布阵
   if (selKey) {
     const t = C.placeTower(g, x, y, selKey);
     if (t) {
       AudioFX.build();
-      P(t.x, t.y, { type: "ring", r: 16, col: "rgba(43,38,32,.5)", decay: 2 });
+      for (let i = 0; i < 10; i++) R3D.emit(t.x, 8, t.y, { vx: (Math.random() - .5) * 60, vy: 40 + Math.random() * 40, vz: (Math.random() - .5) * 60, r: 1.6, col: 0x514840, decay: 2 });
       saveGame();
     } else {
       const chk = C.canPlace(g, x, y, selKey);
-      floatText(x, y, chk.why || "不可布阵", RED, 13);
+      floatText3D(x, y, chk.why || "不可布阵", "#9e2b25", 13);
     }
     return;
   }
@@ -1323,25 +1270,22 @@ cv.addEventListener("pointerdown", e => {
 cv.addEventListener("pointerup", e => {
   if (!dragTower) return;
   const t = dragTower;
-  const [x, y] = canvasPos(e);
+  const x = mouseX, y = mouseY;
   dragTower = null;
-  // 落点找融合目标
   let fused = false;
   for (const o of g.towers) {
     if (o === t) continue;
-    if (Math.hypot(o.x - x, o.y - y) < C.radiusOf(o) + 10) {
+    if (Math.hypot(o.x - x, o.y - y) < C.radiusOf(o) + 12) {
       const r = C.fuseTowers(g, t.id, o.id);
       if (r.ok) { fused = true; saveGame(); closeTPanel(); }
-      else floatText(x, y, r.why + (r.need ? `（需${r.need}灵气）` : ""), RED, 13);
+      else floatText3D(x, y, r.why + (r.need ? `（需${r.need}灵气）` : ""), "#9e2b25", 13);
       break;
     }
   }
-  // 未融合则弹回原位（塔位固定，拖拽仅表达融合意图）
   if (!fused) { t.x = dragOX; t.y = dragOY; }
 });
 cv.addEventListener("pointerleave", () => { mouseX = mouseY = -99; });
 
-// 快进/召妖按钮
 $("ff").onclick = () => {
   speed = speed === 1 ? 2 : speed === 2 ? 3 : 1;
   $("ff").textContent = "快进 ×" + speed;
@@ -1350,11 +1294,9 @@ $("ff").onclick = () => {
 $("startWaveBtn").onclick = () => {
   AudioFX.ensure();
   if (g.phase !== "build") return;
-  const wasFirst = g.wave === 0 && !isFinite(g.autoT);
   C.startWave(g);
   AudioFX.wave();
   const pv = C.wavePreview(g) || { n: g.wave + 1, parts: [] };
-  // 检查本波是否有妖王
   const bossWave = pv.parts.some(p => p.boss);
   bigLabel(bossWave ? "妖 王 临 世" : `妖 潮 · 第 ${g.wave + 1} 波`);
   if (bossWave) shake = Math.max(shake, 6);
@@ -1372,88 +1314,38 @@ window.addEventListener("keydown", e => {
 
 /* ---------------- 主循环 ---------------- */
 let last = performance.now();
-let acc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  if (document.hidden) { last = now; return; } // 后台暂停：不偷跑妖潮
+  if (document.hidden) { last = now; return; }
   let dt = Math.min(.05, (now - last) / 1000);
   last = now;
-  const t = now / 1000;
-  // 逻辑步进（快进 = 多次小步，保事件时序）
+  const time = now / 1000;
   const steps = speed;
   for (let i = 0; i < steps; i++) {
     const evs = C.gameStep(g, dt);
     fxEvents(evs);
-    stepParts(dt);
   }
-  // 渲染
-  ctx.save();
-  if (shake > 0) {
-    ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
-    shake = Math.max(0, shake - dt * 18);
-  }
-  drawBG(t);
-  drawFuseLinks();
-  for (const tw of g.towers) drawTower(tw, t);
-  for (const e of g.enemies) drawFoe(e, t);
-  for (const p of g.projectiles) drawProjectile(p);
-  drawParts();
-  drawPlacementGhost();
-  // 短命特效线（闪电/斩痕/符阵圈）——所有实体之后绘制
-  for (let i = fxLines.length - 1; i >= 0; i--) {
-    const L = fxLines[i];
-    L.life -= dt * L.decay;
-    if (L.life <= 0) { fxLines.splice(i, 1); continue; }
-    ctx.save(); L.draw(ctx); ctx.restore();
-  }
-  // 暗角（边缘淡墨晕，缓存渐变）
-  if (!frame._vig) {
-    const vg = ctx.createRadialGradient(W / 2, H / 2, H * .42, W / 2, H / 2, H * .82);
-    vg.addColorStop(0, "rgba(43,38,32,0)"); vg.addColorStop(1, "rgba(43,38,32,.16)");
-    frame._vig = vg;
-  }
-  ctx.fillStyle = frame._vig; ctx.fillRect(0, 0, W, H);
-  // 飘字
-  for (let i = floaters.length - 1; i >= 0; i--) {
-    const f = floaters[i];
-    f.life -= dt * .8; f.y -= dt * 26;
-    if (f.life <= 0) { floaters.splice(i, 1); continue; }
-    ctx.save(); ctx.globalAlpha = Math.min(1, f.life * 1.6);
-    ctx.font = `${f.size}px "Songti SC","SimSun",serif`;
-    ctx.fillStyle = f.col; ctx.textAlign = "center";
-    ctx.fillText(f.text, f.x, f.y);
-    ctx.restore();
-  }
-  // 妖潮推进度（wave 阶段顶部细线）
-  if (g.phase === "wave" && g.waveTotal > 0) {
-    const done = g.waveTotal - g.buildQueue.length - g.enemies.length;
-    const ratio = Math.max(0, Math.min(1, done / g.waveTotal));
-    ctx.save();
-    ctx.fillStyle = "rgba(43,38,32,.14)"; ctx.fillRect(W / 2 - 130, 14, 260, 2.6);
-    ctx.fillStyle = "rgba(158,43,37,.75)"; ctx.fillRect(W / 2 - 130, 14, 260 * ratio, 2.6);
-    ctx.restore();
-  }
-  // 右下守山印
-  ctx.save(); ctx.globalAlpha = .5;
-  ctx.strokeStyle = RED; ctx.lineWidth = 2;
-  ctx.strokeRect(W - 74, H - 74, 46, 46);
-  ctx.fillStyle = RED; ctx.font = "15px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("守", W - 51, H - 58); ctx.fillText("山", W - 51, H - 40);
-  ctx.restore();
-  ctx.restore();
-  // 波间倒计时（建造期）
-  if (g.phase === "build" && isFinite(g.autoT) && g.autoT > 0) {
-    ctx.save(); ctx.globalAlpha = .8;
-    ctx.font = '13px "Songti SC","SimSun",serif'; ctx.fillStyle = INK; ctx.textAlign = "center";
-    ctx.fillText(`下波妖潮 ${Math.ceil(g.autoT)}s · 提前召妖有灵气赏`, W / 2, 26);
-    ctx.restore();
-  }
+  R3D.sync(dt, time);
+  // ghost 预览
+  if (selKey && mouseX > 0) {
+    const T = C.TOWERS[selKey];
+    const chk = C.canPlace(g, mouseX, mouseY, selKey);
+    R3D.ghost.visible = true;
+    R3D.ghost.position.set(mouseX, 0, mouseY);
+    R3D.ghostRing.geometry.dispose();
+    R3D.ghostRing.geometry = new THREE.RingGeometry(Math.max(2, T.range - 2), T.range, 48);
+    R3D.ghostRing.material.color.set(chk.ok ? T.color : 0x9e2b25);
+    R3D.ghostDisc.position.y = R3D.elev ? 0 : 0;
+  } else R3D.ghost.visible = false;
+  stepFloaters(dt);
+  R3D.render(dt, time);
   syncHUD();
 }
 renderTowerBar();
 renderCodexMini();
 syncHUD();
 requestAnimationFrame(frame);
+
 </script>
 </body>
 </html>

@@ -848,7 +848,7 @@
     MAP, PATH, GATE, SPAWN, PLEN, segs, posAt, pathNormal, pathDistTo, flyPos, FLY_LEN,
     PAL, TOWERS, BASE_KEYS, FOES, WAVES, HP_GROWTH,
     createGame, canPlace, placeTower, spawnFoe, startWave, wavePreview, gameStep,
-    acquire, towerRange, towerDmg, foePos, hitEnemy, TOWER_R, curveSpec, bountyOf,
+    acquire, towerRange, towerDmg, foePos, hitEnemy, TOWER_R, curveSpec, bountyOf, stats,
     upgradeTower, sellTower, setTargetMode,
     FUSIONS, getFusion, CODEX_ALL, canFuse, fuseTowers, codexList, radiusOf, FUSE_DIST,
     REALMS, TRIB_FAIL, TRIB_COST, TRAITS, TRAIT_KEYS, attemptTribulation,
