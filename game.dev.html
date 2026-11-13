@@ -212,7 +212,7 @@ let speed = 1;
 let shake = 0;              // 震屏强度
 let floaters = [];          // 飘字
 let codexSaved = JSON.parse(localStorage.getItem(C.SAVE_KEY) || "null");
-let newCodexKeys = new Set(((codexSaved && codexSaved.codex) || {}));  // 本会话已见
+let newCodexKeys = new Set(Object.keys((codexSaved && codexSaved.codex) || {}));  // 本会话已见
 
 /* ---------------- 粒子系统 ---------------- */
 const parts = [];
@@ -1149,6 +1149,7 @@ let last = performance.now();
 let acc = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  if (document.hidden) { last = now; return; } // 后台暂停：不偷跑妖潮
   let dt = Math.min(.05, (now - last) / 1000);
   last = now;
   const t = now / 1000;
